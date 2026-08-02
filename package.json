@@ -1,0 +1,41 @@
+{
+  "name": "schlop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Check the schlop before you ship.",
+  "license": "MIT",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "bin": {
+    "schlop": "./dist/schlop"
+  },
+  "scripts": {
+    "dev": "bun apps/cli/src/index.ts",
+    "test": "bun test",
+    "test:e2e": "bun run build && python3 tests/e2e/pty_smoke.py",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "build": "bun build apps/cli/src/index.ts --compile --outfile dist/schlop"
+  },
+  "dependencies": {
+    "@opentui/core": "^0.4.5",
+    "@opentui/react": "^0.4.5",
+    "effect": "^3.22.1",
+    "react": "^19.1.1",
+    "zod": "^4.0.14"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.32.0",
+    "@types/bun": "^1.2.19",
+    "@types/react": "^19.1.9",
+    "eslint": "^9.32.0",
+    "prettier": "^3.6.2",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.38.0"
+  }
+}
