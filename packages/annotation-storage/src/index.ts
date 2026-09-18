@@ -5,7 +5,7 @@ import {
   readFile,
   rename,
   rm,
-  writeFile,
+  open,
 } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
@@ -36,15 +36,17 @@ export function dataDirectory(
 export async function atomicText(path: string, content: string): Promise<void> {
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   const temporary = `${path}.${process.pid}.${crypto.randomUUID()}.tmp`;
+  let handle: Awaited<ReturnType<typeof open>> | undefined;
   try {
-    await writeFile(temporary, content, {
-      encoding: "utf8",
-      mode: 0o600,
-      flag: "wx",
-    });
+    handle = await open(temporary, "wx", 0o600);
+    await handle.writeFile(content, { encoding: "utf8" });
+    await handle.sync();
+    await handle.close();
+    handle = undefined;
     await rename(temporary, path);
     await chmod(path, 0o600).catch(() => {});
   } catch (error) {
+    await handle?.close().catch(() => {});
     await rm(temporary, { force: true }).catch(() => {});
     throw error;
   }
