@@ -39,7 +39,17 @@ printf '# Plan\n\nDo the thing.\n' | schlop annotate --stdin --type markdown
 some-command | schlop annotate --stdin --type text --title 'Output' --source-label tool
 ```
 
-When stdin is piped, Schlop opens `/dev/tty` (or the Windows console) for interaction and reserves stdout for the result.
+The existing OpenTUI remains the default for backward compatibility. Select the Neovim frontend with `--ui nvim` or `SCHLOP_UI=nvim`:
+
+```bash
+schlop --ui nvim diff
+schlop --ui nvim file README.md
+command | schlop --ui nvim annotate --stdin --type markdown
+schlop --request /tmp/request.json
+schlop doctor
+```
+
+When stdin is piped, Schlop materializes all content in a private temporary location, then opens `/dev/tty` for Neovim interaction and reserves stdout for the result. A controlling terminal is required; Schlop fails without waiting if one is unavailable.
 
 ### Keys
 
@@ -62,10 +72,82 @@ Exit codes are:
 | Outcome   | Code |
 | --------- | ---: |
 | submitted |    0 |
+| approved  |    0 |
 | error     |    1 |
 | cancelled |   20 |
 
 Without `--result-file`, submitted annotations are written as Markdown to stdout. `source-label` is opaque metadata and activates no host behavior.
+
+## Neovim frontend
+
+Schlop launches a new process using your existing Neovim executable, normal configuration, plugins, keybindings, colorscheme, and ShaDa behavior. It injects Schlop's packaged Lua runtime before startup and opens Schlop after your configuration has loaded. Schlop does not bundle, download, install, or upgrade Neovim, and it does not require installation through your plugin manager. It requires **Neovim 0.9.0 or newer**, based on the buffer, extmark, job, JSON, and Lua APIs used. Installation documentation: <https://neovim.io/doc/user/install.html>.
+
+Executable precedence is `--nvim`, the `nvim` property in `$SCHLOP_CONFIG` or the platform Schlop config, `SCHLOP_NVIM`, then `nvim` on `PATH`. `schlop doctor` reports the selected executable/version, Lua runtime, session storage, and controlling TTY. It returns nonzero when a required capability is missing.
+
+The launched process intentionally loads your normal Neovim configuration and plugins. Schlop surfaces themselves remain immutable `nofile` scratch buffers with swap, undo persistence, writes, and modelines disabled. Because your configuration is trusted and runs normally, its startup code and autocommands may execute; use conventional plugin mode if you prefer to control exactly when Schlop opens. Linux and macOS terminal ownership are supported; Windows launch mode currently fails clearly because its console lifecycle has not been tested.
+
+### Request and result files
+
+`schlop --request request.json` accepts schema version 1:
+
+```json
+{
+  "schemaVersion": 1,
+  "requestId": "request-id",
+  "surface": {
+    "kind": "markdown",
+    "title": "Document",
+    "contentPath": "/private/tmp/content.md",
+    "snapshotId": "sha256:<content-sha256>"
+  },
+  "source": { "label": "host" },
+  "resultPath": "/private/tmp/result.json",
+  "options": { "readOnly": true }
+}
+```
+
+Content must be a regular non-symlink file, valid UTF-8, NUL-free, at most 10 MiB, and match the supplied SHA-256. Metadata is display-only and restricted to safe scalar values. Result parents must already exist. Results are atomically renamed into place and validated before the launcher accepts them:
+
+```json
+{
+  "schemaVersion": 1,
+  "requestId": "request-id",
+  "outcome": "submitted",
+  "sessionId": "session-id",
+  "surfaceSnapshotId": "sha256:...",
+  "annotations": [],
+  "formattedFeedback": "# Schlop annotations\n..."
+}
+```
+
+Outcomes are `submitted`, `approved`, `cancelled`, and `error`. Approval does not invent formatted feedback. Exit status is separate: submitted/approved `0`, error `1`, cancelled `20`, and interruption `130` where available. A missing, partial, mismatched, or invalid result is an error.
+
+### Conventional plugin mode
+
+Add `nvim/` to `runtimepath` using your preferred plugin mechanism. Plugin and CLI-launched modes use the same Lua renderer and TypeScript controller semantics. The `schlop` executable must be on `PATH`, or configure it with `require("schlop").setup({ executable = "/path/to/schlop" })`.
+
+```vim
+:SchlopDiff
+:SchlopDiff --cached
+:SchlopFile README.md
+:SchlopRequest /tmp/request.json
+:SchlopResume
+:SchlopSubmit
+:SchlopApprove
+:SchlopCancel
+```
+
+The content header always identifies the current document and its position in the review. Use `]f` and `[f` to move to the next and previous documents; the persistent footer shows these and the primary annotation shortcuts, while `?` opens the complete help window.
+
+Lua APIs include `require("schlop").open_request(path)` and `require("schlop").annotate({ kind = "markdown", title = "Document", content = "...", result_path = "..." })`. Mappings are buffer-local and configurable. `Ctrl-c` interrupts CLI-launched Schlop with exit 130; in plugin mode it closes only the Schlop UI. Plugin-mode completion does not exit Neovim.
+
+### Host TUI lifecycle
+
+A terminal host in raw mode must suspend its renderer, restore ordinary terminal settings, launch Schlop, wait, restore raw mode, redraw, and then read the result. This is host integration behavior, not annotation-core behavior. Alternatively, launch Schlop in a tmux pane/window and consume the result asynchronously.
+
+Build output contains `dist/schlop` and `dist/share/schlop/nvim/`; a system-prefix installation places these as `bin/schlop` and `share/schlop/nvim/`. The packaged runtime contains Schlop Lua only, not Neovim or its distribution runtime.
+
+Troubleshooting starts with `schlop doctor`. Use `--nvim /path/to/nvim` or `SCHLOP_NVIM`; `SCHLOP_RUNTIME` is a development/debug override. `--keep-temporary` preserves launcher files for debugging. Schlop never executes inspected content or modelines, edits sources, applies patches, fetches content, or automatically sends feedback. Your own Neovim startup configuration remains responsible for any code it chooses to run.
 
 ## Architecture
 
