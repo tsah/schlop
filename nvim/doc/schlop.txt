@@ -1,0 +1,38 @@
+*schlop.txt*  Immutable annotation surfaces for Neovim
+
+==============================================================================
+COMMANDS                                                     *schlop-commands*
+
+:SchlopDiff [git-diff arguments]
+:SchlopFile {path} [text|markdown]
+:SchlopRequest {request.json}
+:SchlopResume [session-id]
+:SchlopSubmit
+:SchlopApprove
+:SchlopCancel
+
+The plugin delegates all domain operations to the Schlop executable. Configure a
+non-PATH executable with: >lua
+  require('schlop').setup({ executable = '/path/to/schlop' })
+<
+Lua entry points: require('schlop').open_request(path) and
+require('schlop').annotate({ kind='markdown', title='Document', content='...' }).
+
+Surfaces are nofile, readonly, nonmodifiable scratch buffers. The content
+header identifies the current document and its position in the review. The
+footer displays the primary shortcuts; press ? for complete help.
+
+Default mappings: >
+  ]f / [f       next / previous document
+  ]a / [a       next / previous annotation
+  c             annotate line or visual selection
+  C / A         annotate document / entire surface
+  e / d         edit / delete annotation
+  s / S         submit / approve
+  q / CTRL-C    cancel / interrupt
+  ?             help
+<
+Mappings are buffer-local and configurable through setup(). See README.md for
+protocols, standalone security, and host terminal lifecycle.
+
+vim:tw=78:ts=8:noet:ft=help:norl:

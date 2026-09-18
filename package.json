@@ -12,15 +12,20 @@
   "bin": {
     "schlop": "./dist/schlop"
   },
+  "files": [
+    "dist/schlop",
+    "dist/share"
+  ],
   "scripts": {
     "dev": "bun apps/cli/src/index.ts",
     "test": "bun test",
-    "test:e2e": "bun run build && python3 tests/e2e/pty_smoke.py",
+    "test:e2e": "bun run build && python3 tests/e2e/pty_smoke.py && python3 tests/e2e/nvim_pty.py",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "build": "bun build apps/cli/src/index.ts --compile --outfile dist/schlop"
+    "build": "bun build apps/cli/src/index.ts --compile --outfile dist/schlop && bun scripts/package-runtime.ts",
+    "test:nvim": "bun run build && bun test tests/nvim.test.ts"
   },
   "dependencies": {
     "@opentui/core": "^0.4.5",
