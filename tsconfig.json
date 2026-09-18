@@ -18,6 +18,7 @@
     "apps/**/*.tsx",
     "packages/**/*.ts",
     "packages/**/*.tsx",
+    "integrations/**/*.ts",
     "tests/**/*.ts"
   ]
 }

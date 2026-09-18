@@ -149,6 +149,19 @@ Build output contains `dist/schlop` and `dist/share/schlop/nvim/`; a system-pref
 
 Troubleshooting starts with `schlop doctor`. Use `--nvim /path/to/nvim` or `SCHLOP_NVIM`; `SCHLOP_RUNTIME` is a development/debug override. `--keep-temporary` preserves launcher files for debugging. Schlop never executes inspected content or modelines, edits sources, applies patches, fetches content, or automatically sends feedback. Your own Neovim startup configuration remains responsible for any code it chooses to run.
 
+## Pi extension
+
+`integrations/pi` is a Pi coding agent package. It adds `/schlop-last`, which opens the last assistant message of the active branch in Schlop's Neovim frontend. Annotate, press `s` to submit, and the annotations are sent back to Pi as a user message that quotes each annotated passage. Approving (`S`), cancelling (`q`), or submitting without annotations sends nothing.
+
+Install it from a checkout, then build Schlop so the executable exists:
+
+```bash
+pi install /path/to/schlop/integrations/pi
+bun run build
+```
+
+The extension resolves the executable from `SCHLOP_BIN`, then `schlop` on `PATH`, then this checkout's `dist/schlop`. It follows the host TUI lifecycle below: Pi's renderer is suspended while Neovim owns the terminal and redrawn afterwards, so it requires Pi's interactive TUI mode. Try it without installing using `pi -e integrations/pi/index.ts`.
+
 ## Architecture
 
 ```text
