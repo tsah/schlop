@@ -58,7 +58,6 @@ async function renderAt(
       schemaVersion: 1,
       id: "visual-comment",
       target: { ...target, contextFingerprint: targetContext(surface, target) },
-      intent: "change-request",
       body: "Explain this rename before shipping.",
       source: { kind: "human" },
       createdAt: "2026-01-02T03:04:05.000Z",

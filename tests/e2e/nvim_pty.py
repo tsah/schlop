@@ -88,16 +88,16 @@ def main():
         assert code == 0, code
         assert json.loads(submitted.read_text())["outcome"] == "submitted"
 
-        approved = root / "approved.json"
+        piped = root / "piped.json"
         code, _ = run(
-            ["--ui", "nvim", "annotate", "--stdin", "--type", "markdown", "--result-file", str(approved)],
-            key=b"S",
+            ["--ui", "nvim", "annotate", "--stdin", "--type", "markdown", "--result-file", str(piped)],
+            key=b"s",
             piped=b"# Piped\n\nInteractive Neovim still owns the TTY.\n",
         )
         assert code == 0, code
-        result = json.loads(approved.read_text())
-        assert result["outcome"] == "approved"
-        assert "formattedFeedback" not in result
+        result = json.loads(piped.read_text())
+        assert result["outcome"] == "submitted"
+        assert "formattedFeedback" in result
 
         request_result = root / "request-result.json"
         request = root / "request.json"
@@ -114,11 +114,11 @@ def main():
             "resultPath": str(request_result),
             "options": {"readOnly": True},
         }))
-        code, _ = run(["--request", str(request)], key=b"S")
+        code, _ = run(["--request", str(request)], key=b"s")
         assert code == 0, code
         request_value = json.loads(request_result.read_text())
         assert request_value["requestId"] == "pty-request"
-        assert request_value["outcome"] == "approved"
+        assert request_value["outcome"] == "submitted"
 
         stale = root / "stale.json"
         stale.write_text(json.dumps({

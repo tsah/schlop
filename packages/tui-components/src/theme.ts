@@ -1,4 +1,3 @@
-import type { AnnotationIntent } from "@schlop/annotation-core";
 import type { Layout, Pane } from "./index";
 
 export interface SemanticRowTheme {
@@ -24,7 +23,6 @@ export interface TuiTheme {
     addition: SemanticRowTheme;
     deletion: SemanticRowTheme;
   };
-  intents: Record<AnnotationIntent, string>;
 }
 
 export const darkTheme: TuiTheme = {
@@ -44,12 +42,6 @@ export const darkTheme: TuiTheme = {
     context: { foreground: "#d8dde5", background: "#15191f", marker: " " },
     addition: { foreground: "#79df98", background: "#10351e", marker: "+" },
     deletion: { foreground: "#ff9188", background: "#3a191b", marker: "-" },
-  },
-  intents: {
-    "change-request": "#e8c45a",
-    question: "#72b7ff",
-    suggestion: "#a78bfa",
-    note: "#929aa8",
   },
 };
 

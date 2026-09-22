@@ -16,7 +16,6 @@ import {
   targetContext,
   updateAnnotation,
   type Annotation,
-  type AnnotationIntent,
   type AnnotationSession,
   type AnnotationTarget,
 } from "@schlop/annotation-core";
@@ -74,18 +73,6 @@ interface NavigatorItem {
   rowIndex: number;
   heading?: boolean;
 }
-const intents: AnnotationIntent[] = [
-  "change-request",
-  "question",
-  "suggestion",
-  "note",
-];
-const intentLabel: Record<AnnotationIntent, string> = {
-  "change-request": "Change request",
-  question: "Question",
-  suggestion: "Suggestion",
-  note: "Note",
-};
 const statusSymbol: Record<DiffDocument["status"], string> = {
   added: "A",
   modified: "M",
@@ -208,7 +195,6 @@ export function App({ initial, stale, initialView, onSave, finish }: AppProps) {
     initialView ?? initialTuiState,
   );
   const [session, setSession] = useState(initial);
-  const [intent, setIntent] = useState<AnnotationIntent>("change-request");
   const [draft, setDraft] = useState("");
   const [targetMode, setTargetMode] = useState<
     "range" | "document" | "surface"
@@ -335,14 +321,12 @@ export function App({ initial, stale, initialView, onSave, finish }: AppProps) {
     try {
       const now = new Date().toISOString();
       let next: AnnotationSession;
-      if (editing)
-        next = updateAnnotation(session, editing, { body, intent }, now);
+      if (editing) next = updateAnnotation(session, editing, { body }, now);
       else
         next = addAnnotation(session, {
           schemaVersion: 1,
           id: crypto.randomUUID(),
           target: makeTarget(),
-          intent,
           body,
           source: { kind: "human" },
           createdAt: now,
@@ -371,7 +355,6 @@ export function App({ initial, stale, initialView, onSave, finish }: AppProps) {
   ) => {
     setTargetMode(mode);
     setEditing(annotation?.id);
-    setIntent(annotation?.intent ?? intent);
     setDraft(annotation?.body ?? "");
     setComposerKey((value) => value + 1);
     dispatch({ type: "set-mode", mode: "compose" });
@@ -514,10 +497,6 @@ export function App({ initial, stale, initialView, onSave, finish }: AppProps) {
     else if (action === "comment-range") begin("range");
     else if (action === "comment-document") begin("document");
     else if (action === "comment-surface") begin("surface");
-    else if (action === "cycle-intent")
-      setIntent(
-        (value) => intents[(intents.indexOf(value) + 1) % intents.length]!,
-      );
     else if (action === "old-side") {
       setDiffSide("old");
       setStatus("Context targets old side");
@@ -751,7 +730,7 @@ export function App({ initial, stale, initialView, onSave, finish }: AppProps) {
         <text fg="#ff6b6b">Delete this annotation?</text>
         <text>
           {selectedAnnotation
-            ? `${intentLabel[selectedAnnotation.intent]} · ${annotationLocation(session, selectedAnnotation)}`
+            ? annotationLocation(session, selectedAnnotation)
             : "Unknown annotation"}
         </text>
         <text>{selectedAnnotation?.body}</text>
@@ -759,9 +738,6 @@ export function App({ initial, stale, initialView, onSave, finish }: AppProps) {
       </box>
     );
   if (view.mode === "confirm-finish") {
-    const changes = session.annotations.filter(
-      (item) => item.intent === "change-request",
-    ).length;
     return (
       <box
         style={{
@@ -773,7 +749,7 @@ export function App({ initial, stale, initialView, onSave, finish }: AppProps) {
         title="Finish annotation"
       >
         <text>
-          {session.annotations.length} annotations · {changes} change requests ·{" "}
+          {session.annotations.length} annotations ·{" "}
           {session.progress.inspectedDocumentIds.length}/
           {session.surface.documents.length} inspected
         </text>
@@ -953,10 +929,9 @@ export function App({ initial, stale, initialView, onSave, finish }: AppProps) {
               >
                 <text
                   style={{ height: 1, width: "100%" }}
-                  fg={darkTheme.intents[item.intent]}
+                  fg={darkTheme.accent}
                 >
-                  {active ? "›" : " "} {intentLabel[item.intent].toUpperCase()}{" "}
-                  · {annotationLocation(session, item)}
+                  {active ? "›" : " "} {annotationLocation(session, item)}
                 </text>
                 <text
                   style={{ height: 1 }}
@@ -1034,9 +1009,7 @@ export function App({ initial, stale, initialView, onSave, finish }: AppProps) {
       const annotation = session.annotations.find(
         (candidate) => candidate.id === item.annotationId,
       );
-      const color = item.intent
-        ? darkTheme.intents[item.intent]
-        : darkTheme.textMuted;
+      const color = darkTheme.accent;
       return (
         <box
           key={item.id}
@@ -1051,7 +1024,7 @@ export function App({ initial, stale, initialView, onSave, finish }: AppProps) {
           }}
         >
           <text style={{ height: 1, width: "100%" }} fg={color}>
-            {` ◆ ${item.intent ? intentLabel[item.intent].toUpperCase() : "ANNOTATION"}${annotation ? ` · ${annotationLocation(session, annotation)}` : ""}`}
+            {` ◆ ${annotation ? annotationLocation(session, annotation) : "Annotation"}`}
           </text>
           <text
             style={{ height: 1 }}
@@ -1190,11 +1163,11 @@ export function App({ initial, stale, initialView, onSave, finish }: AppProps) {
         <box
           backgroundColor={darkTheme.surface}
           border={["left"]}
-          borderColor={darkTheme.intents[intent]}
+          borderColor={darkTheme.accent}
           style={{ height: composerHeight, flexDirection: "column" }}
         >
-          <text style={{ height: 1 }} fg={darkTheme.intents[intent]}>
-            {` ${intentLabel[intent].toUpperCase()} · ${targetPreview()}`}
+          <text style={{ height: 1 }} fg={darkTheme.accent}>
+            {` ANNOTATE · ${targetPreview()}`}
           </text>
           <textarea
             key={composerKey}

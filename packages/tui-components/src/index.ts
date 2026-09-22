@@ -172,7 +172,6 @@ export type TuiCommand =
   | "comment-range"
   | "comment-document"
   | "comment-surface"
-  | "cycle-intent"
   | "old-side"
   | "new-side"
   | "toggle-wrap"
@@ -288,13 +287,6 @@ const bindings: Binding[] = [
     action: "comment-surface",
     keys: "A",
     hint: "A surface comment",
-    modes: browse,
-    footer: false,
-  },
-  {
-    action: "cycle-intent",
-    keys: "i",
-    hint: "i intent",
     modes: browse,
     footer: false,
   },
@@ -478,7 +470,6 @@ export function resolveKey(state: TuiState, key: KeyStroke): ResolvedKey {
     v: "select-range",
     c: key.shift ? "comment-document" : "comment-range",
     a: key.shift ? "comment-surface" : "next-annotation",
-    i: "cycle-intent",
     h: "old-side",
     l: "new-side",
     w: "toggle-wrap",

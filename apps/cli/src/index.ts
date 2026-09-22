@@ -46,7 +46,7 @@ Usage:
   schlop doctor [--nvim PATH]
 
 The existing OpenTUI frontend remains the default. Set --ui nvim or SCHLOP_UI=nvim
-for standalone Neovim. Completion exit codes: submitted/approved 0, error 1,
+for standalone Neovim. Completion exit codes: submitted 0, error 1,
 cancelled 20.`;
 function option(args: string[], name: string): string | undefined {
   const boundary = args.indexOf("--");

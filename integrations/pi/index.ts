@@ -105,8 +105,6 @@ export default function schlop(pi: ExtensionAPI) {
           ctx.ui.notify(`Schlop failed: ${outcome.message}`, "error");
         } else if (outcome.kind === "cancelled") {
           ctx.ui.notify("Schlop cancelled; nothing sent.", "info");
-        } else if (outcome.kind === "approved") {
-          ctx.ui.notify("Message approved; nothing sent.", "info");
         } else if (!outcome.annotations.length) {
           ctx.ui.notify("No annotations; nothing sent.", "info");
         } else {

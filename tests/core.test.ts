@@ -46,15 +46,11 @@ afterEach(async () => {
   );
 });
 const now = "2026-01-02T03:04:05.000Z";
-function annotation(
-  target: Annotation["target"],
-  intent: Annotation["intent"] = "change-request",
-): Annotation {
+function annotation(target: Annotation["target"]): Annotation {
   return {
     schemaVersion: 1,
     id: "a1",
     target,
-    intent,
     body: "Fix this",
     source: { kind: "human" },
     createdAt: now,
@@ -116,13 +112,8 @@ describe("annotation core", () => {
       annotation(target),
     );
     expect(session.annotations).toHaveLength(1);
-    session = updateAnnotation(
-      session,
-      "a1",
-      { body: "Why?", intent: "question" },
-      now,
-    );
-    expect(session.annotations[0]!.intent).toBe("question");
+    session = updateAnnotation(session, "a1", { body: "Why?" }, now);
+    expect(session.annotations[0]!.body).toBe("Why?");
     session = markDocumentInspected(session, documentId, now);
     expect(session.progress.inspectedDocumentIds).toEqual([documentId]);
     session = deleteAnnotation(session, "a1", now);
@@ -213,7 +204,7 @@ describe("diff surfaces", () => {
 });
 
 describe("exports, storage, overlays, and UI reducers", () => {
-  test("preserves question semantics in markdown and emits versioned JSON", () => {
+  test("lists annotations with locations in markdown and emits versioned JSON", () => {
     const surface = createTextSurface({ content: "one", title: "README.md" });
     const target = {
       kind: "text-range" as const,
@@ -224,11 +215,16 @@ describe("exports, storage, overlays, and UI reducers", () => {
     };
     const session = addAnnotation(
       createSession(surface, { id: "s1", now }),
-      annotation(target, "question"),
+      annotation(target),
     );
-    expect(exportMarkdown(session)).toContain("## Questions");
-    expect(exportMarkdown(session)).not.toContain("## Change requests");
+    expect(exportMarkdown(session)).toContain("1. `");
+    expect(exportMarkdown(session)).not.toContain("##");
     expect(exportMarkdown(session)).toContain("Fix this");
+    const partial = addAnnotation(
+      createSession(surface, { id: "s2", now }),
+      annotation({ ...target, startColumn: 2, endColumn: 3 }),
+    );
+    expect(exportMarkdown(partial)).toContain("line 1, columns 2-3");
     expect(JSON.parse(exportJson(session)).schemaVersion).toBe(1);
   });
   test("atomically saves, resumes, lists and survives corrupt neighbors", async () => {
@@ -382,7 +378,6 @@ describe("exports, storage, overlays, and UI reducers", () => {
     ).toMatchObject({ oldLine: 2, marker: "-" });
     expect(stream.find((item) => item.kind === "annotation")).toMatchObject({
       annotationId: "a1",
-      intent: "change-request",
     });
     const window = reviewWindow(stream, 4, 5);
     expect(

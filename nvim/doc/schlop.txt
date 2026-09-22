@@ -8,7 +8,6 @@ COMMANDS                                                     *schlop-commands*
 :SchlopRequest {request.json}
 :SchlopResume [session-id]
 :SchlopSubmit
-:SchlopApprove
 :SchlopCancel
 
 The plugin delegates all domain operations to the Schlop executable. Configure a
@@ -25,10 +24,10 @@ footer displays the primary shortcuts; press ? for complete help.
 Default mappings: >
   ]f / [f       next / previous document
   ]a / [a       next / previous annotation
-  c             annotate line or visual selection
+  c             annotate line, visual selection, or part of a line (v)
   C / A         annotate document / entire surface
   e / d         edit / delete annotation
-  s / S         submit / approve
+  s             submit
   q / CTRL-C    cancel / interrupt
   ?             help
 <

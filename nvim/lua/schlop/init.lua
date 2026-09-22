@@ -14,6 +14,5 @@ function M.diff(args) bootstrap.start({ schemaVersion = 1, input = { kind = "dif
 function M.file(path, kind) bootstrap.start({ schemaVersion = 1, input = { kind = "file", path = vim.fn.fnamemodify(path, ":p"), type = kind } }) end
 function M.resume(id) bootstrap.start({ schemaVersion = 1, input = { kind = "resume", id = id } }) end
 function M.submit() require("schlop.ui").finish("submit") end
-function M.approve() require("schlop.ui").finish("approve") end
 function M.cancel() require("schlop.ui").finish("cancel") end
 return M

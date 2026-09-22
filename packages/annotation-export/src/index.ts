@@ -10,12 +10,6 @@ import type {
   MarkdownSurface,
 } from "@schlop/surface-protocol";
 
-const labels = {
-  "change-request": "Change request",
-  question: "Question",
-  suggestion: "Suggestion",
-  note: "Note",
-} as const;
 function location(session: AnnotationSession, annotation: Annotation): string {
   const target = annotation.target;
   if (target.kind === "surface") return session.surface.title;
@@ -24,8 +18,14 @@ function location(session: AnnotationSession, annotation: Annotation): string {
   );
   const name = document?.path ?? document?.title ?? target.documentId;
   if (target.kind === "document") return name;
-  if (target.kind === "text-range")
-    return `${name}: lines ${target.startLine}${target.endLine === target.startLine ? "" : `-${target.endLine}`}`;
+  if (target.kind === "text-range") {
+    const { startLine, endLine, startColumn, endColumn } = target;
+    if (startColumn && endColumn)
+      return startLine === endLine
+        ? `${name}: line ${startLine}, columns ${startColumn}-${endColumn}`
+        : `${name}: line ${startLine} column ${startColumn} to line ${endLine} column ${endColumn}`;
+    return `${name}: lines ${startLine}${endLine === startLine ? "" : `-${endLine}`}`;
+  }
   return `${name}:${target.startLine}${target.endLine === target.startLine ? "" : `-${target.endLine}`} (${target.side})`;
 }
 export function exportMarkdown(session: AnnotationSession): string {
@@ -35,26 +35,13 @@ export function exportMarkdown(session: AnnotationSession): string {
     `Source: \`${session.surface.title.replaceAll("`", "\\`")}\``,
     "",
   ];
-  for (const intent of [
-    "change-request",
-    "question",
-    "suggestion",
-    "note",
-  ] as const) {
-    const items = session.annotations.filter((item) => item.intent === intent);
-    if (!items.length) continue;
+  session.annotations.forEach((item, index) => {
     output.push(
-      `## ${intent === "change-request" ? "Change requests" : `${labels[intent]}s`}`,
+      `${index + 1}. \`${location(session, item).replaceAll("`", "\\`")}\``,
+      `   ${item.body.replaceAll("\n", "\n   ")}`,
       "",
     );
-    items.forEach((item, index) => {
-      output.push(
-        `${index + 1}. \`${location(session, item).replaceAll("`", "\\`")}\``,
-        `   ${item.body.replaceAll("\n", "\n   ")}`,
-        "",
-      );
-    });
-  }
+  });
   if (!session.annotations.length) output.push("No annotations.", "");
   return `${output.join("\n").trimEnd()}\n`;
 }
@@ -65,7 +52,7 @@ export const AnnotationResultSchema = z
   .object({
     schemaVersion: z.literal(1),
     requestId: z.string().optional(),
-    outcome: z.enum(["submitted", "approved", "cancelled", "error"]),
+    outcome: z.enum(["submitted", "cancelled", "error"]),
     sessionId: z.string().optional(),
     surfaceSnapshotId: z.string().optional(),
     annotations: z.array(AnnotationSchema).optional(),
@@ -99,16 +86,10 @@ export const AnnotationResultSchema = z
         code: "custom",
         message: "Submitted result requires formatted feedback",
       });
-    if (result.outcome === "approved" && result.formattedFeedback !== undefined)
-      context.addIssue({
-        code: "custom",
-        message: "Approved result must not contain formatted feedback",
-      });
   });
 export type AnnotationResult = z.infer<typeof AnnotationResultSchema>;
 export const COMPLETION_EXIT_CODES = {
   submitted: 0,
-  approved: 0,
   error: 1,
   cancelled: 20,
 } as const;
@@ -119,7 +100,7 @@ export function completionExitCode(
 }
 export function createResult(
   session: AnnotationSession,
-  outcome: "submitted" | "approved" | "cancelled",
+  outcome: "submitted" | "cancelled",
   requestId?: string,
 ): AnnotationResult {
   return {
@@ -129,9 +110,7 @@ export function createResult(
     sessionId: session.id,
     surfaceSnapshotId: session.surface.snapshotId,
     annotations: session.annotations,
-    ...(outcome === "approved"
-      ? {}
-      : { formattedFeedback: exportMarkdown(session) }),
+    formattedFeedback: exportMarkdown(session),
   };
 }
 export type ExportableSurface = DiffSurface | TextSurface | MarkdownSurface;

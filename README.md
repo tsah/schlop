@@ -72,7 +72,6 @@ Exit codes are:
 | Outcome   | Code |
 | --------- | ---: |
 | submitted |    0 |
-| approved  |    0 |
 | error     |    1 |
 | cancelled |   20 |
 
@@ -120,7 +119,7 @@ Content must be a regular non-symlink file, valid UTF-8, NUL-free, at most 10 Mi
 }
 ```
 
-Outcomes are `submitted`, `approved`, `cancelled`, and `error`. Approval does not invent formatted feedback. Exit status is separate: submitted/approved `0`, error `1`, cancelled `20`, and interruption `130` where available. A missing, partial, mismatched, or invalid result is an error.
+Outcomes are `submitted`, `cancelled`, and `error`. Exit status is separate: submitted `0`, error `1`, cancelled `20`, and interruption `130` where available. A missing, partial, mismatched, or invalid result is an error.
 
 ### Conventional plugin mode
 
@@ -133,7 +132,6 @@ Add `nvim/` to `runtimepath` using your preferred plugin mechanism. Plugin and C
 :SchlopRequest /tmp/request.json
 :SchlopResume
 :SchlopSubmit
-:SchlopApprove
 :SchlopCancel
 ```
 
@@ -151,7 +149,7 @@ Troubleshooting starts with `schlop doctor`. Use `--nvim /path/to/nvim` or `SCHL
 
 ## Pi extension
 
-`integrations/pi` is a Pi coding agent package. It adds `/schlop-last`, which opens the last assistant message of the active branch in Schlop's Neovim frontend. Annotate, press `s` to submit, and the annotations are sent back to Pi as a user message that quotes each annotated passage. Approving (`S`), cancelling (`q`), or submitting without annotations sends nothing.
+`integrations/pi` is a Pi coding agent package. It adds `/schlop-last`, which opens the last assistant message of the active branch in Schlop's Neovim frontend. Select lines with `V`, or part of a line with `v`, press `c` to annotate, then `s` to submit; the annotations are sent back to Pi as a user message that quotes each annotated passage. Cancelling (`q`) or submitting without annotations sends nothing.
 
 Install it from a checkout, then build Schlop so the executable exists:
 

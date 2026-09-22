@@ -30,13 +30,6 @@ export const AnnotationTargetSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("surface"), surfaceSnapshotId: z.string() }),
 ]);
 export type AnnotationTarget = z.infer<typeof AnnotationTargetSchema>;
-export const AnnotationIntentSchema = z.enum([
-  "change-request",
-  "question",
-  "suggestion",
-  "note",
-]);
-export type AnnotationIntent = z.infer<typeof AnnotationIntentSchema>;
 export const AnnotationSourceSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("human") }),
   z.object({ kind: z.literal("external"), name: z.string().min(1) }),
@@ -45,7 +38,6 @@ export const AnnotationSchema = z.object({
   schemaVersion: z.literal(1),
   id: z.string().min(1),
   target: AnnotationTargetSchema,
-  intent: AnnotationIntentSchema,
   body: z.string().trim().min(1),
   source: AnnotationSourceSchema,
   createdAt: z.string().datetime(),
@@ -256,7 +248,7 @@ export function addAnnotation(
 export function updateAnnotation(
   session: AnnotationSession,
   id: string,
-  changes: Pick<Annotation, "body" | "intent">,
+  changes: Pick<Annotation, "body">,
   now: string,
 ): AnnotationSession {
   if (!session.annotations.some((item) => item.id === id))

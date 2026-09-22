@@ -11,7 +11,6 @@ M.values = {
     next_document = "]f",
     previous_document = "[f",
     submit = "s",
-    approve = "S",
     cancel = "q",
     interrupt = "<C-c>",
     help = "?",

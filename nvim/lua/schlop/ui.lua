@@ -3,7 +3,6 @@ local config = require("schlop.config")
 local M = {}
 local ns = vim.api.nvim_create_namespace("schlop_annotations")
 local state = { document = 1, side = "new", standalone = false, closed = false }
-local intents = { "change-request", "question", "suggestion", "note" }
 
 local function immutable(buf)
   vim.bo[buf].buftype = "nofile"
@@ -35,6 +34,24 @@ local function annotation_at_cursor()
       if target.kind == "document" then return annotation end
     end
   end
+end
+-- Column conversions use UTF-16 units so they match the controller's string indexes.
+local function char_column(text, byte_col)
+  local ok, value = pcall(vim.str_utfindex, text, "utf-16", byte_col - 1)
+  if not ok then value = select(2, vim.str_utfindex(text, byte_col - 1)) end
+  return value + 1
+end
+local function byte_offset(text, char_col)
+  local ok, value = pcall(vim.str_byteindex, text, "utf-16", char_col - 1)
+  if not ok then value = vim.str_byteindex(text, char_col - 1, true) end
+  return value
+end
+-- Byte span of a text-range target on one rendered line, or nil for whole-line targets.
+local function span_bytes(text, target, line_number)
+  if target.kind ~= "text-range" or not target.startColumn or not target.endColumn then return nil end
+  local first = line_number == target.startLine and byte_offset(text, target.startColumn) or 0
+  local last = line_number == target.endLine and byte_offset(text, math.min(target.endColumn + 1, char_column(text, #text + 1))) or #text
+  return first, last
 end
 local function build_rows()
   local document = state.session.surface.documents[state.document]
@@ -74,12 +91,12 @@ local function render_sidebar()
   for _, annotation in ipairs(state.session.annotations) do
     local line = #lines + 1
     local body = annotation.body:gsub("\n.*", "")
-    table.insert(lines, " • [" .. annotation.intent .. "] " .. body)
+    table.insert(lines, " • " .. body)
     state.sidebar_items[line] = annotation
   end
   table.insert(lines, "")
   table.insert(lines, " c add  e edit  d delete")
-  table.insert(lines, " s submit  S approve  q cancel")
+  table.insert(lines, " s submit  q cancel")
   set_lines(state.sidebar_buf, lines)
 end
 local function render()
@@ -96,7 +113,9 @@ local function render()
         local target = annotation.target
         local matches = target.documentId == row.target.documentId and ((target.kind == "text-range" and row.line >= target.startLine and row.line <= target.endLine) or (target.kind == "diff-range" and row.hunkId == target.hunkId and row.side == target.side and row.line >= target.startLine and row.line <= target.endLine))
         if matches then
-          vim.api.nvim_buf_set_extmark(state.content_buf, ns, row_number - 1, 0, { virt_text = { { " ◆ " .. annotation.intent, "DiagnosticInfo" } }, virt_text_pos = "eol", hl_mode = "combine" })
+          local first_byte, last_byte = span_bytes(lines[row_number], target, row.line)
+          if first_byte then vim.api.nvim_buf_set_extmark(state.content_buf, ns, row_number - 1, first_byte, { end_col = last_byte, hl_group = "Visual", hl_mode = "combine" }) end
+          vim.api.nvim_buf_set_extmark(state.content_buf, ns, row_number - 1, 0, { virt_text = { { " ◆", "DiagnosticInfo" } }, virt_text_pos = "eol", hl_mode = "combine" })
           break
         end
       end
@@ -128,15 +147,30 @@ local function rpc_session(method, params, callback)
 end
 local function selected_target()
   local first, last = vim.api.nvim_win_get_cursor(0)[1], vim.api.nvim_win_get_cursor(0)[1]
+  local first_col, last_col
   local mode = vim.fn.mode()
-  if mode:match("[vV\22]") then first, last = vim.fn.line("v"), vim.fn.line(".") end
-  if first > last then first, last = last, first end
+  if mode:match("[vV\22]") then
+    local anchor, cursor = vim.fn.getpos("v"), vim.fn.getpos(".")
+    first, last = anchor[2], cursor[2]
+    first_col, last_col = anchor[3], cursor[3]
+    if first > last or (first == last and first_col > last_col) then first, last, first_col, last_col = last, first, last_col, first_col end
+  end
   local a, b = state.rows[first], state.rows[last]
   if not a or not b or not a.target or not b.target then error("Select addressable content lines") end
   if a.target.kind == "diff-range" and (a.hunkId ~= b.hunkId or a.side ~= b.side) then error("Diff selections must stay within one hunk and side") end
   local target = vim.deepcopy(a.target)
   target.startLine = math.min(a.line, b.line)
   target.endLine = math.max(a.line, b.line)
+  -- A characterwise selection records columns so part of a line can be annotated.
+  if mode == "v" and target.kind == "text-range" then
+    local first_text = vim.api.nvim_buf_get_lines(0, first - 1, first, false)[1] or ""
+    local last_text = vim.api.nvim_buf_get_lines(0, last - 1, last, false)[1] or ""
+    local start_column = char_column(first_text, first_col)
+    local end_column = char_column(last_text, math.min(last_col, math.max(#last_text, 1)))
+    if not (first == last and start_column == 1 and end_column >= char_column(last_text, math.max(#last_text, 1))) then
+      target.startColumn, target.endColumn = start_column, end_column
+    end
+  end
   return target
 end
 local function compose(annotation, target_override)
@@ -149,17 +183,13 @@ local function compose(annotation, target_override)
   local width = math.max(30, math.min(72, vim.o.columns - 8))
   local height = math.max(5, math.min(12, vim.o.lines - 8))
   local buf = vim.api.nvim_create_buf(false, true)
-  local intent_index = 1
-  if annotation then for index, value in ipairs(intents) do if value == annotation.intent then intent_index = index end end end
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, vim.split(annotation and annotation.body or "", "\n", { plain = true }))
   vim.bo[buf].buftype = "nofile"; vim.bo[buf].bufhidden = "wipe"; vim.bo[buf].swapfile = false; vim.bo[buf].modeline = false
-  local win = vim.api.nvim_open_win(buf, true, { relative = "editor", row = math.floor((vim.o.lines - height) / 2), col = math.floor((vim.o.columns - width) / 2), width = width, height = height, style = "minimal", border = "rounded", title = " Annotation · " .. intents[intent_index] .. " · Ctrl-s save / Ctrl-i intent " })
-  local function retitle() vim.api.nvim_win_set_config(win, vim.tbl_extend("force", vim.api.nvim_win_get_config(win), { title = " Annotation · " .. intents[intent_index] .. " · Ctrl-s save / Ctrl-i intent " })) end
-  map(buf, { "n", "i", "s" }, "<C-i>", function() intent_index = intent_index % #intents + 1; retitle() end, "cycle intent")
+  local win = vim.api.nvim_open_win(buf, true, { relative = "editor", row = math.floor((vim.o.lines - height) / 2), col = math.floor((vim.o.columns - width) / 2), width = width, height = height, style = "minimal", border = "rounded", title = " Annotation · Ctrl-s save · Esc close " })
   map(buf, { "n", "i", "s" }, "<C-s>", function()
     local body = table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n")
     if vim.trim(body) == "" then return vim.notify("Annotation cannot be empty", vim.log.levels.WARN) end
-    local params = { body = body, intent = intents[intent_index] }
+    local params = { body = body }
     local method = "addAnnotation"
     if annotation then params.id = annotation.id; method = "updateAnnotation" else
       params.target = pending_target
@@ -202,7 +232,7 @@ local function interrupt()
 end
 M.interrupt = interrupt
 local function help()
-  local lines = { "Schlop", "", "j/k move · v select · c range · C document · A surface", "e edit · d delete · m inspected · ]a/[a annotations", "]f/[f documents · ]h/[h headings or hunks · h/l diff context side", "s submit · S approve · q cancel · Ctrl-c interrupt", "", "Persisted targets use snapshot, document, hunk, side and semantic line coordinates." }
+  local lines = { "Schlop", "", "j/k move · v/V select · c annotate selection · C document · A surface", "e edit · d delete · m inspected · ]a/[a annotations", "]f/[f documents · ]h/[h headings or hunks · h/l diff context side", "s submit · q cancel · Ctrl-c interrupt", "", "Persisted targets use snapshot, document, hunk, side and semantic line coordinates." }
   local buf = vim.api.nvim_create_buf(false, true); vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines); immutable(buf)
   local height = math.min(#lines + 4, vim.o.lines - 4)
   local win = vim.api.nvim_open_win(buf, true, { relative = "editor", row = math.max(1, math.floor((vim.o.lines - height) / 2)), col = math.max(1, math.floor((vim.o.columns - 78) / 2)), width = math.min(78, vim.o.columns - 4), height = height, border = "rounded", style = "minimal", title = " Help " })
@@ -265,7 +295,6 @@ local function setup_mappings(buf)
   map(buf, "n", "h", function() if state.session.surface.kind == "diff" then state.side = "old"; render() else vim.cmd("normal! h") end end, "old side")
   map(buf, "n", "l", function() if state.session.surface.kind == "diff" then state.side = "new"; render() else vim.cmd("normal! l") end end, "new side")
   map(buf, "n", m.submit, function() finish("submit") end, "submit")
-  map(buf, "n", m.approve, function() finish("approve") end, "approve")
   map(buf, "n", m.cancel, function() finish("cancel") end, "cancel")
   map(buf, "n", m.help, help, "help")
   map(buf, "n", m.interrupt, interrupt, "interrupt Schlop")

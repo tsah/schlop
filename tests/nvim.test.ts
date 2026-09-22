@@ -136,7 +136,6 @@ test("result validation binds completion to the expected frozen session", () => 
       {
         schemaVersion: 1,
         id: "bad",
-        intent: "note",
         body: "bad target",
         source: { kind: "human" },
         createdAt: new Date().toISOString(),
@@ -156,7 +155,7 @@ test("result validation binds completion to the expected frozen session", () => 
   ).toThrow("Invalid result annotations");
 });
 
-test("controller owns annotation creation, approval and atomic result", async () => {
+test("controller owns annotation creation, submission and atomic result", async () => {
   const directory = await root();
   const surface = createTextSurface({ content: "one\ntwo", title: "Frozen" });
   const session = createSession(surface, { id: "controller-test" });
@@ -210,7 +209,7 @@ test("controller owns annotation creation, approval and atomic result", async ()
     return JSON.parse(line) as TestResponse;
   };
   writer.write(
-    `${JSON.stringify({ id: 1, method: "addAnnotation", params: { target: { kind: "text-range", surfaceSnapshotId: surface.snapshotId, documentId: surface.documents[0]!.id, startLine: 1, endLine: 2 }, intent: "question", body: "Why?" } })}\n`,
+    `${JSON.stringify({ id: 1, method: "addAnnotation", params: { target: { kind: "text-range", surfaceSnapshotId: surface.snapshotId, documentId: surface.documents[0]!.id, startLine: 1, endLine: 2 }, body: "Why?" } })}\n`,
   );
   const added = await response();
   const annotationId = added.result.annotations[0]!.id;
@@ -218,14 +217,14 @@ test("controller owns annotation creation, approval and atomic result", async ()
     /^sha256:/,
   );
   writer.write(
-    `${JSON.stringify({ id: 2, method: "updateAnnotation", params: { id: annotationId, intent: "suggestion", body: "Edited" } })}\n`,
+    `${JSON.stringify({ id: 2, method: "updateAnnotation", params: { id: annotationId, body: "Edited" } })}\n`,
   );
   expect((await response()).result.annotations[0]!.body).toBe("Edited");
   writer.write(
     `${JSON.stringify({ id: 3, method: "deleteAnnotation", params: { id: annotationId } })}\n`,
   );
   expect((await response()).result.annotations).toHaveLength(0);
-  writer.write(`${JSON.stringify({ id: 4, method: "approve" })}\n`);
+  writer.write(`${JSON.stringify({ id: 4, method: "submit" })}\n`);
   await response();
   writer.end();
   expect(await child.exited).toBe(0);
@@ -233,9 +232,80 @@ test("controller owns annotation creation, approval and atomic result", async ()
   expect(completion).toMatchObject({
     schemaVersion: 1,
     requestId: "rpc-1",
-    outcome: "approved",
+    outcome: "submitted",
   });
-  expect(completion.formattedFeedback).toBeUndefined();
+  expect(completion.formattedFeedback).toContain("No annotations.");
+});
+
+test("headless Neovim records columns for characterwise selections only", async () => {
+  if (!Bun.which("nvim")) return;
+  const directory = await root();
+  const surface = createTextSurface({
+    content: "alpha beta gamma\nsecond line here\n",
+    title: "Columns",
+  });
+  const session = createSession(surface, { id: "nvim-columns" });
+  const launch = join(directory, "launch.json");
+  const result = join(directory, "result.json");
+  const script = join(directory, "columns.lua");
+  await writeFile(
+    launch,
+    JSON.stringify({ schemaVersion: 1, session, resultPath: result }),
+  );
+  await writeFile(
+    script,
+    `
+vim.opt.runtimepath:prepend(${JSON.stringify(join(import.meta.dir, "../nvim"))})
+require("schlop.bootstrap").start(${JSON.stringify(launch)}, { standalone = false })
+assert(vim.wait(5000, function() return vim.api.nvim_buf_get_name(0):match("^schlop://") ~= nil end, 20))
+local content = vim.api.nvim_get_current_win()
+vim.api.nvim_win_set_cursor(content, { 1, 6 })
+vim.api.nvim_feedkeys("vjllc", "x", false)
+assert(vim.api.nvim_win_get_config(0).relative == "editor", "composer must open from a characterwise selection")
+vim.api.nvim_buf_set_lines(0, 0, -1, false, { "partial" })
+vim.api.nvim_feedkeys(vim.keycode("<C-s>"), "x", false)
+assert(vim.wait(5000, function() return vim.api.nvim_buf_get_name(0):match("^schlop://") ~= nil end, 20))
+vim.api.nvim_win_set_cursor(content, { 2, 0 })
+vim.api.nvim_feedkeys("Vc", "x", false)
+vim.api.nvim_buf_set_lines(0, 0, -1, false, { "whole" })
+vim.api.nvim_feedkeys(vim.keycode("<C-s>"), "x", false)
+assert(vim.wait(5000, function() return vim.fn.mode() == "n" end, 20))
+vim.api.nvim_feedkeys("s", "x", false)
+local uv = vim.uv or vim.loop
+assert(vim.wait(5000, function() return uv.fs_stat(${JSON.stringify(result)}) ~= nil end, 20))
+vim.cmd("qa!")
+`,
+  );
+  const child = Bun.spawn(
+    [Bun.which("nvim")!, "--headless", "-u", "NONE", "-l", script],
+    {
+      stdout: "pipe",
+      stderr: "pipe",
+      env: {
+        ...process.env,
+        SCHLOP_CONTROLLER_COMMAND: JSON.stringify([
+          process.execPath,
+          join(import.meta.dir, "../apps/cli/src/index.ts"),
+        ]),
+      },
+    },
+  );
+  const stderr = await new Response(child.stderr).text();
+  expect(await child.exited).toBe(0);
+  expect(stderr).not.toContain("Error");
+  const completion = JSON.parse(await readFile(result, "utf8"));
+  const [partial, whole] = completion.annotations;
+  expect(partial.target).toMatchObject({
+    startLine: 1,
+    endLine: 2,
+    startColumn: 7,
+    endColumn: 9,
+  });
+  expect(whole.target).toMatchObject({ startLine: 2, endLine: 2 });
+  expect(whole.target.startColumn).toBeUndefined();
+  expect(completion.formattedFeedback).toContain(
+    "line 1 column 7 to line 2 column 9",
+  );
 });
 
 test("headless Neovim renders an empty diff without crashing", async () => {
@@ -378,9 +448,9 @@ vim.api.nvim_feedkeys(vim.keycode("[f"), "x", false)
 local common = { surfaceSnapshotId = ${JSON.stringify(surface.snapshotId)}, documentId = ${JSON.stringify(document.id)}, hunkId = ${JSON.stringify(hunk.id)} }
 local old_target = vim.tbl_extend("force", common, { kind = "diff-range", side = "old", startLine = 1, endLine = 1 })
 local new_target = vim.tbl_extend("force", common, { kind = "diff-range", side = "new", startLine = 1, endLine = 1 })
-require("schlop.rpc").call("addAnnotation", { target = old_target, intent = "note", body = "old side" }, function(old_error)
+require("schlop.rpc").call("addAnnotation", { target = old_target, body = "old side" }, function(old_error)
   assert(not old_error)
-  require("schlop.rpc").call("addAnnotation", { target = new_target, intent = "note", body = "new side" }, function(new_error)
+  require("schlop.rpc").call("addAnnotation", { target = new_target, body = "new side" }, function(new_error)
     assert(not new_error)
     require("schlop.rpc").call("submit", {}, function(submit_error) assert(not submit_error); vim.g.done = true end)
   end)

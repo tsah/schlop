@@ -54,10 +54,10 @@ test("outcomes map result files and exit statuses", async () => {
     expect(await readOutcome(path, "r", 130)).toEqual({ kind: "cancelled" });
     expect((await readOutcome(path, "r", 1)).kind).toBe("error");
     const write = (value: unknown) => writeFile(path, JSON.stringify(value));
-    await write({ schemaVersion: 1, requestId: "other", outcome: "approved" });
+    await write({ schemaVersion: 1, requestId: "other", outcome: "cancelled" });
     expect((await readOutcome(path, "r", 0)).kind).toBe("error");
-    await write({ schemaVersion: 1, requestId: "r", outcome: "approved" });
-    expect(await readOutcome(path, "r", 0)).toEqual({ kind: "approved" });
+    await write({ schemaVersion: 1, requestId: "r", outcome: "cancelled" });
+    expect(await readOutcome(path, "r", 20)).toEqual({ kind: "cancelled" });
     await write({
       schemaVersion: 1,
       requestId: "r",
@@ -73,19 +73,44 @@ test("outcomes map result files and exit statuses", async () => {
   }
 });
 
-test("feedback quotes the annotated lines", () => {
+test("feedback quotes the annotated lines or the selected part of them", () => {
   const feedback = formatFeedback("# Plan\r\n\r\nDo the thing.\r\nThen stop.", [
     {
-      intent: "change-request",
       body: "Be specific.\n",
       target: { kind: "text-range", startLine: 3, endLine: 4 },
     },
-    { intent: "note", body: "Overall fine.", target: { kind: "surface" } },
+    { body: "Overall fine.", target: { kind: "surface" } },
+    {
+      body: "Which?",
+      target: {
+        kind: "text-range",
+        startLine: 3,
+        endLine: 3,
+        startColumn: 4,
+        endColumn: 12,
+      },
+    },
+    {
+      body: "Spans lines.",
+      target: {
+        kind: "text-range",
+        startLine: 3,
+        endLine: 4,
+        startColumn: 8,
+        endColumn: 4,
+      },
+    },
   ]);
   expect(feedback).toContain(
-    "## 1. Change request (lines 3-4)\n\n> Do the thing.\n> Then stop.\n\nBe specific.\n",
+    "## 1. Lines 3-4\n\n> Do the thing.\n> Then stop.\n\nBe specific.\n",
   );
-  expect(feedback).toContain("## 2. Note (whole message)\n\nOverall fine.\n");
+  expect(feedback).toContain("## 2. Whole message\n\nOverall fine.\n");
+  expect(feedback).toContain(
+    "## 3. Line 3, columns 4-12\n\n> the thing\n\nWhich?\n",
+  );
+  expect(feedback).toContain(
+    "## 4. Lines 3-4 (partial)\n\n> thing.\n> Then\n\nSpans lines.\n",
+  );
 });
 
 test("executable resolution prefers SCHLOP_BIN, then PATH, then the checkout", async () => {
@@ -116,7 +141,7 @@ test("/schlop-last sends submitted annotations as a user message", async () => {
 const request = JSON.parse(await Bun.file(process.argv[3]).text());
 await Bun.write(request.resultPath, JSON.stringify({
   schemaVersion: 1, requestId: request.requestId, outcome: "submitted",
-  annotations: [{ intent: "question", body: "Why?",
+  annotations: [{ body: "Why?",
     target: { kind: "text-range", startLine: 1, endLine: 1 } }],
 }));
 `,
@@ -154,9 +179,7 @@ await Bun.write(request.resultPath, JSON.stringify({
     expect(notices).toEqual([]);
     expect(lifecycle).toEqual(["stop", "start", "render"]);
     expect(sent).toHaveLength(1);
-    expect(sent[0]![0]).toContain(
-      "## 1. Question (line 1)\n\n> Ship it.\n\nWhy?",
-    );
+    expect(sent[0]![0]).toContain("## 1. Line 1\n\n> Ship it.\n\nWhy?");
     expect(sent[0]![1]).toBeUndefined();
   } finally {
     if (previous === undefined) delete process.env.SCHLOP_BIN;

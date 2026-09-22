@@ -99,13 +99,17 @@ export async function prepareRequest(
 }
 
 export type ResultAnnotation = {
-  intent: string;
   body: string;
-  target: { kind: string; startLine?: number; endLine?: number };
+  target: {
+    kind: string;
+    startLine?: number;
+    endLine?: number;
+    startColumn?: number;
+    endColumn?: number;
+  };
 };
 export type Outcome =
   | { kind: "submitted"; annotations: ResultAnnotation[] }
-  | { kind: "approved" }
   | { kind: "cancelled" }
   | { kind: "error"; message: string };
 
@@ -130,8 +134,7 @@ export async function readOutcome(
   }
   if (value?.schemaVersion !== 1 || value.requestId !== requestId)
     return { kind: "error", message: "Schlop result does not match request" };
-  if (value.outcome === "approved" || value.outcome === "cancelled")
-    return { kind: value.outcome };
+  if (value.outcome === "cancelled") return { kind: "cancelled" };
   if (value.outcome === "submitted" && Array.isArray(value.annotations))
     return { kind: "submitted", annotations: value.annotations };
   return {
@@ -140,15 +143,8 @@ export async function readOutcome(
   };
 }
 
-const labels: Record<string, string> = {
-  "change-request": "Change request",
-  question: "Question",
-  suggestion: "Suggestion",
-  note: "Note",
-};
-
 // Line numbers alone mean little to an agent that never saw its message as
-// numbered lines, so each annotation quotes the text it is attached to.
+// numbered lines, so each annotation quotes the exact text it is attached to.
 export function formatFeedback(
   content: string,
   annotations: readonly ResultAnnotation[],
@@ -163,18 +159,23 @@ export function formatFeedback(
     "",
   ];
   annotations.forEach((annotation, index) => {
-    const { startLine, endLine } = annotation.target;
-    const label = labels[annotation.intent] ?? annotation.intent;
+    const { startLine, endLine, startColumn, endColumn } = annotation.target;
     if (startLine === undefined || endLine === undefined) {
-      output.push(`## ${index + 1}. ${label} (whole message)`, "");
+      output.push(`## ${index + 1}. Whole message`, "");
     } else {
-      const range =
+      const partial = startColumn !== undefined && endColumn !== undefined;
+      const where =
         startLine === endLine
-          ? `line ${startLine}`
-          : `lines ${startLine}-${endLine}`;
-      output.push(`## ${index + 1}. ${label} (${range})`, "");
-      for (const line of lines.slice(startLine - 1, endLine))
-        output.push(line ? `> ${line}` : ">");
+          ? `Line ${startLine}${partial ? `, columns ${startColumn}-${endColumn}` : ""}`
+          : `Lines ${startLine}-${endLine}${partial ? ` (partial)` : ""}`;
+      output.push(`## ${index + 1}. ${where}`, "");
+      const quoted = lines.slice(startLine - 1, endLine);
+      if (partial) {
+        const lastIndex = quoted.length - 1;
+        quoted[lastIndex] = quoted[lastIndex]!.slice(0, endColumn);
+        quoted[0] = quoted[0]!.slice(startColumn - 1);
+      }
+      for (const line of quoted) output.push(line ? `> ${line}` : ">");
       output.push("");
     }
     output.push(annotation.body.trim(), "");

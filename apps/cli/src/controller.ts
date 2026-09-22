@@ -9,7 +9,6 @@ import {
   targetContext,
   updateAnnotation,
   validateSession,
-  type AnnotationIntent,
   type AnnotationSession,
   type AnnotationTarget,
 } from "@schlop/annotation-core";
@@ -50,7 +49,7 @@ interface RpcRequest {
 async function writeResult(
   launch: ControllerLaunch,
   session: AnnotationSession,
-  outcome: "submitted" | "approved" | "cancelled",
+  outcome: "submitted" | "cancelled",
 ) {
   if (!launch.resultPath) return;
   await atomicText(
@@ -138,7 +137,6 @@ export async function runController(path: string): Promise<void> {
           schemaVersion: 1,
           id: crypto.randomUUID(),
           target: completeTarget,
-          intent: params.intent as AnnotationIntent,
           body: String(params.body ?? ""),
           source: { kind: "human" },
           createdAt: now,
@@ -151,10 +149,7 @@ export async function runController(path: string): Promise<void> {
         current = updateAnnotation(
           current,
           String(params.id),
-          {
-            body: String(params.body ?? ""),
-            intent: params.intent as AnnotationIntent,
-          },
+          { body: String(params.body ?? "") },
           now,
         );
         await save();
@@ -172,16 +167,11 @@ export async function runController(path: string): Promise<void> {
         await save();
         return reply({ id, result: current });
       }
-      if (["submit", "approve", "cancel"].includes(method)) {
+      if (method === "submit" || method === "cancel") {
         const validation = validateSession(current);
         if (!validation.valid) throw new Error(validation.errors.join("; "));
         await save();
-        const outcome =
-          method === "approve"
-            ? "approved"
-            : method === "cancel"
-              ? "cancelled"
-              : "submitted";
+        const outcome = method === "cancel" ? "cancelled" : "submitted";
         await writeResult(launch, current, outcome);
         return reply({ id, result: { outcome } });
       }

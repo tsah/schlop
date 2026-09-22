@@ -1,8 +1,4 @@
-import type {
-  Annotation,
-  AnnotationIntent,
-  AnnotationSession,
-} from "@schlop/annotation-core";
+import type { Annotation, AnnotationSession } from "@schlop/annotation-core";
 import type {
   DiffDocument,
   DiffLine,
@@ -32,7 +28,6 @@ export interface ReviewStreamItem {
   line?: number;
   hunkId?: string;
   annotationId?: string;
-  intent?: AnnotationIntent;
 }
 
 function targetMatchesLine(
@@ -71,7 +66,6 @@ function annotationItem(
     selectable: false,
     text: annotation.body,
     annotationId: annotation.id,
-    intent: annotation.intent,
   };
 }
 
