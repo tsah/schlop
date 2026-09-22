@@ -237,11 +237,11 @@ test("controller owns annotation creation, submission and atomic result", async 
   expect(completion.formattedFeedback).toContain("No annotations.");
 });
 
-test("headless Neovim records columns for characterwise selections only", async () => {
+test("headless Neovim records columns, and edits and deletes from the content pane", async () => {
   if (!Bun.which("nvim")) return;
   const directory = await root();
   const surface = createTextSurface({
-    content: "alpha beta gamma\nsecond line here\n",
+    content: "alpha beta gamma\nsecond line here\nthird line\nfourth line\n",
     title: "Columns",
   });
   const session = createSession(surface, { id: "nvim-columns" });
@@ -259,17 +259,47 @@ vim.opt.runtimepath:prepend(${JSON.stringify(join(import.meta.dir, "../nvim"))})
 require("schlop.bootstrap").start(${JSON.stringify(launch)}, { standalone = false })
 assert(vim.wait(5000, function() return vim.api.nvim_buf_get_name(0):match("^schlop://") ~= nil end, 20))
 local content = vim.api.nvim_get_current_win()
+-- Mutations round-trip through the controller, so wait for the sidebar to reflect them.
+local function sidebar_has(text)
+  assert(vim.wait(5000, function()
+    for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+      if vim.api.nvim_buf_is_loaded(buf) and (vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1] or "") == " SCHLOP" then
+        return vim.tbl_contains(vim.api.nvim_buf_get_lines(buf, 0, -1, false), text)
+      end
+    end
+    return false
+  end, 20), "sidebar never showed: " .. text)
+end
 vim.api.nvim_win_set_cursor(content, { 1, 6 })
 vim.api.nvim_feedkeys("vjllc", "x", false)
 assert(vim.api.nvim_win_get_config(0).relative == "editor", "composer must open from a characterwise selection")
 vim.api.nvim_buf_set_lines(0, 0, -1, false, { "partial" })
 vim.api.nvim_feedkeys(vim.keycode("<C-s>"), "x", false)
 assert(vim.wait(5000, function() return vim.api.nvim_buf_get_name(0):match("^schlop://") ~= nil end, 20))
-vim.api.nvim_win_set_cursor(content, { 2, 0 })
+vim.api.nvim_win_set_cursor(content, { 3, 0 })
 vim.api.nvim_feedkeys("Vc", "x", false)
 vim.api.nvim_buf_set_lines(0, 0, -1, false, { "whole" })
 vim.api.nvim_feedkeys(vim.keycode("<C-s>"), "x", false)
 assert(vim.wait(5000, function() return vim.fn.mode() == "n" end, 20))
+sidebar_has(" Annotations (2)")
+-- Edit and delete must resolve the annotation under the cursor in the content pane.
+vim.api.nvim_set_current_win(content)
+vim.api.nvim_win_set_cursor(content, { 3, 3 })
+vim.api.nvim_feedkeys("e", "x", false)
+assert(vim.api.nvim_win_get_config(0).relative == "editor", "e must open the composer for the annotation under the cursor")
+assert(vim.fn.mode():match("^[sS]"), "edit composer must select the existing body")
+vim.api.nvim_feedkeys("whole edited", "x", false)
+vim.api.nvim_feedkeys(vim.keycode("<C-s>"), "x", false)
+sidebar_has(" • whole edited")
+vim.api.nvim_win_set_cursor(content, { 4, 0 })
+vim.api.nvim_feedkeys("Vc", "x", false)
+vim.api.nvim_buf_set_lines(0, 0, -1, false, { "doomed" })
+vim.api.nvim_feedkeys(vim.keycode("<C-s>"), "x", false)
+sidebar_has(" Annotations (3)")
+vim.fn.confirm = function() return 1 end
+vim.api.nvim_win_set_cursor(content, { 4, 0 })
+vim.api.nvim_feedkeys("d", "x", false)
+sidebar_has(" Annotations (2)")
 vim.api.nvim_feedkeys("s", "x", false)
 local uv = vim.uv or vim.loop
 assert(vim.wait(5000, function() return uv.fs_stat(${JSON.stringify(result)}) ~= nil end, 20))
@@ -291,17 +321,20 @@ vim.cmd("qa!")
     },
   );
   const stderr = await new Response(child.stderr).text();
+  expect(stderr).toBe("");
   expect(await child.exited).toBe(0);
-  expect(stderr).not.toContain("Error");
   const completion = JSON.parse(await readFile(result, "utf8"));
+  expect(completion.annotations).toHaveLength(2);
   const [partial, whole] = completion.annotations;
+  expect(partial.body).toBe("partial");
+  expect(whole.body).toBe("whole edited");
   expect(partial.target).toMatchObject({
     startLine: 1,
     endLine: 2,
     startColumn: 7,
     endColumn: 9,
   });
-  expect(whole.target).toMatchObject({ startLine: 2, endLine: 2 });
+  expect(whole.target).toMatchObject({ startLine: 3, endLine: 3 });
   expect(whole.target.startColumn).toBeUndefined();
   expect(completion.formattedFeedback).toContain(
     "line 1 column 7 to line 2 column 9",

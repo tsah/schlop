@@ -23,16 +23,18 @@ end
 local function map(buf, modes, lhs, rhs, description)
   if lhs and lhs ~= "" then vim.keymap.set(modes, lhs, rhs, { buffer = buf, silent = true, desc = "Schlop: " .. description }) end
 end
+-- Whether a rendered content row lies inside an annotation target.
+local function row_matches(row, target)
+  if not row.target or target.documentId ~= row.target.documentId then return false end
+  if target.kind == "document" then return true end
+  if target.kind == "text-range" then return row.line >= target.startLine and row.line <= target.endLine end
+  return target.kind == "diff-range" and row.hunkId == target.hunkId and row.side == target.side and row.line >= target.startLine and row.line <= target.endLine
+end
 local function annotation_at_cursor()
   local row = state.rows and state.rows[vim.api.nvim_win_get_cursor(0)[1]]
-  if not row or not row.target then return nil end
+  if not row then return nil end
   for _, annotation in ipairs(state.session.annotations) do
-    local target = annotation.target
-    if target.documentId == row.target.documentId then
-      if target.kind == "text-range" and row.target.line and row.target.line >= target.startLine and row.target.line <= target.endLine then return annotation end
-      if target.kind == "diff-range" and row.target.hunkId == target.hunkId and row.target.side == target.side and row.target.line >= target.startLine and row.target.line <= target.endLine then return annotation end
-      if target.kind == "document" then return annotation end
-    end
+    if row_matches(row, annotation.target) then return annotation end
   end
 end
 -- Column conversions use UTF-16 units so they match the controller's string indexes.
@@ -111,8 +113,7 @@ local function render()
     if row.target then
       for _, annotation in ipairs(state.session.annotations) do
         local target = annotation.target
-        local matches = target.documentId == row.target.documentId and ((target.kind == "text-range" and row.line >= target.startLine and row.line <= target.endLine) or (target.kind == "diff-range" and row.hunkId == target.hunkId and row.side == target.side and row.line >= target.startLine and row.line <= target.endLine))
-        if matches then
+        if target.kind ~= "document" and row_matches(row, target) then
           local first_byte, last_byte = span_bytes(lines[row_number], target, row.line)
           if first_byte then vim.api.nvim_buf_set_extmark(state.content_buf, ns, row_number - 1, first_byte, { end_col = last_byte, hl_group = "Visual", hl_mode = "combine" }) end
           vim.api.nvim_buf_set_extmark(state.content_buf, ns, row_number - 1, 0, { virt_text = { { " ◆", "DiagnosticInfo" } }, virt_text_pos = "eol", hl_mode = "combine" })
