@@ -68,12 +68,7 @@ function excerpt(session: AnnotationSession, annotation: Annotation): string[] {
   return lines;
 }
 export function exportMarkdown(session: AnnotationSession): string {
-  const output = [
-    "# Schlop annotations",
-    "",
-    `Source: \`${session.surface.title.replaceAll("`", "\\`")}\``,
-    "",
-  ];
+  const output = ["The user added comments:", ""];
   session.annotations.forEach((item, index) => {
     output.push(
       `## ${index + 1}. \`${location(session, item).replaceAll("`", "\\`")}\``,

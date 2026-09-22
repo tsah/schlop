@@ -102,7 +102,7 @@ await Bun.write(request.resultPath, JSON.stringify({
   schemaVersion: 1, requestId: request.requestId, outcome: "submitted",
   annotations: [{ body: "Why?",
     target: { kind: "text-range", startLine: 1, endLine: 1 } }],
-  formattedFeedback: "# Schlop annotations\\n\\n## 1. Line 1\\n\\n> Ship it.\\n\\nWhy?\\n",
+  formattedFeedback: "The user added comments:\\n\\n## 1. Line 1\\n\\n> Ship it.\\n\\nWhy?\\n",
 }));
 `,
   );

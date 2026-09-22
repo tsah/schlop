@@ -300,6 +300,30 @@ vim.fn.confirm = function() return 1 end
 vim.api.nvim_win_set_cursor(content, { 4, 0 })
 vim.api.nvim_feedkeys("d", "x", false)
 sidebar_has(" Annotations (2)")
+-- A second whole-line annotation on line 3 makes e ambiguous: the picker must offer both.
+vim.api.nvim_win_set_cursor(content, { 3, 0 })
+vim.api.nvim_feedkeys("Vc", "x", false)
+vim.api.nvim_buf_set_lines(0, 0, -1, false, { "second on three" })
+vim.api.nvim_feedkeys(vim.keycode("<C-s>"), "x", false)
+sidebar_has(" • second on three")
+local offered
+vim.ui.select = function(items, _, on_choice) offered = #items; on_choice(items[2]) end
+vim.api.nvim_win_set_cursor(content, { 3, 5 })
+vim.api.nvim_feedkeys("e", "x", false)
+assert(offered == 2, "picker must list both annotations on the line")
+assert(vim.fn.mode():match("^[sS]"), "edit composer must open for the picked annotation")
+vim.api.nvim_feedkeys("second edited", "x", false)
+vim.api.nvim_feedkeys(vim.keycode("<C-s>"), "x", false)
+sidebar_has(" • second edited")
+-- With the cursor inside the column span on line 1, the partial annotation wins without a picker.
+offered = nil
+vim.api.nvim_win_set_cursor(content, { 1, 8 })
+vim.api.nvim_feedkeys("e", "x", false)
+assert(offered == nil, "column span under the cursor must not need a picker")
+assert(vim.fn.mode():match("^[sS]"), "edit composer must open for the partial annotation")
+vim.api.nvim_feedkeys("partial edited", "x", false)
+vim.api.nvim_feedkeys(vim.keycode("<C-s>"), "x", false)
+sidebar_has(" • partial edited")
 vim.api.nvim_feedkeys("s", "x", false)
 local uv = vim.uv or vim.loop
 assert(vim.wait(5000, function() return uv.fs_stat(${JSON.stringify(result)}) ~= nil end, 20))
@@ -324,10 +348,11 @@ vim.cmd("qa!")
   expect(stderr).toBe("");
   expect(await child.exited).toBe(0);
   const completion = JSON.parse(await readFile(result, "utf8"));
-  expect(completion.annotations).toHaveLength(2);
-  const [partial, whole] = completion.annotations;
-  expect(partial.body).toBe("partial");
+  expect(completion.annotations).toHaveLength(3);
+  const [partial, whole, second] = completion.annotations;
+  expect(partial.body).toBe("partial edited");
   expect(whole.body).toBe("whole edited");
+  expect(second.body).toBe("second edited");
   expect(partial.target).toMatchObject({
     startLine: 1,
     endLine: 2,

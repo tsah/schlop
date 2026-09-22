@@ -115,7 +115,7 @@ Content must be a regular non-symlink file, valid UTF-8, NUL-free, at most 10 Mi
   "sessionId": "session-id",
   "surfaceSnapshotId": "sha256:...",
   "annotations": [],
-  "formattedFeedback": "# Schlop annotations\n..."
+  "formattedFeedback": "The user added comments:\n..."
 }
 ```
 

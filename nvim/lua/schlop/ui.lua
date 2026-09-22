@@ -30,18 +30,35 @@ local function row_matches(row, target)
   if target.kind == "text-range" then return row.line >= target.startLine and row.line <= target.endLine end
   return target.kind == "diff-range" and row.hunkId == target.hunkId and row.side == target.side and row.line >= target.startLine and row.line <= target.endLine
 end
-local function annotation_at_cursor()
-  local row = state.rows and state.rows[vim.api.nvim_win_get_cursor(0)[1]]
-  if not row then return nil end
-  for _, annotation in ipairs(state.session.annotations) do
-    if row_matches(row, annotation.target) then return annotation end
-  end
-end
 -- Column conversions use UTF-16 units so they match the controller's string indexes.
 local function char_column(text, byte_col)
   local ok, value = pcall(vim.str_utfindex, text, "utf-16", byte_col - 1)
   if not ok then value = select(2, vim.str_utfindex(text, byte_col - 1)) end
   return value + 1
+end
+-- Whether a column-limited target covers the cursor column on its start or end line.
+local function covers_column(target, line, column)
+  if not target.startColumn or not target.endColumn then return true end
+  if line == target.startLine and column < target.startColumn then return false end
+  if line == target.endLine and column > target.endColumn then return false end
+  return true
+end
+-- Annotations on the cursor row. Column-spanned ones that contain the cursor
+-- win over whole-line ones, so several annotations on one line stay addressable.
+local function annotations_at_cursor()
+  local cursor = vim.api.nvim_win_get_cursor(0)
+  local row = state.rows and state.rows[cursor[1]]
+  if not row or not row.target then return {} end
+  local column = char_column(vim.api.nvim_get_current_line(), cursor[2] + 1)
+  local matching, spanned = {}, {}
+  for _, annotation in ipairs(state.session.annotations) do
+    local target = annotation.target
+    if row_matches(row, target) then
+      table.insert(matching, annotation)
+      if target.startColumn and covers_column(target, row.line, column) then table.insert(spanned, annotation) end
+    end
+  end
+  return #spanned > 0 and spanned or matching
 end
 local function byte_offset(text, char_col)
   local ok, value = pcall(vim.str_byteindex, text, "utf-16", char_col - 1)
@@ -243,9 +260,20 @@ local function help()
   vim.wo[win].relativenumber = false
   for _, key in ipairs({ "q", "?", "<Esc>" }) do map(buf, "n", key, function() vim.api.nvim_win_close(win, true) end, "close help") end
 end
-local function selected_annotation()
-  if vim.api.nvim_get_current_buf() == state.sidebar_buf then return state.sidebar_items and state.sidebar_items[vim.api.nvim_win_get_cursor(0)[1]] end
-  return annotation_at_cursor()
+-- Resolves the annotation an action applies to, asking when the row holds several.
+local function with_selected_annotation(callback)
+  if vim.api.nvim_get_current_buf() == state.sidebar_buf then
+    local annotation = state.sidebar_items and state.sidebar_items[vim.api.nvim_win_get_cursor(0)[1]]
+    if annotation then callback(annotation) end
+    return
+  end
+  local candidates = annotations_at_cursor()
+  if #candidates == 1 then return callback(candidates[1]) end
+  if #candidates == 0 then return vim.notify("Schlop: no annotation under the cursor", vim.log.levels.WARN) end
+  vim.ui.select(candidates, {
+    prompt = "Annotation",
+    format_item = function(annotation) return (annotation.body:gsub("\n.*", "")) end,
+  }, function(choice) if choice then callback(choice) end end)
 end
 local function jump_landmark(delta)
   local document = state.session.surface.documents[state.document]
@@ -284,8 +312,12 @@ local function setup_mappings(buf)
   map(buf, { "n", "x" }, m.annotate, function() compose(nil) end, "annotate")
   map(buf, "n", "C", function() local document = state.session.surface.documents[state.document]; if document then compose(nil, { kind = "document", surfaceSnapshotId = state.session.surface.snapshotId, documentId = document.id }) end end, "annotate document")
   map(buf, "n", "A", function() compose(nil, { kind = "surface", surfaceSnapshotId = state.session.surface.snapshotId }) end, "annotate surface")
-  map(buf, "n", m.edit, function() local a = selected_annotation(); if a then compose(a) end end, "edit annotation")
-  map(buf, "n", m.delete, function() local a = selected_annotation(); if a and vim.fn.confirm("Delete annotation?", "&Delete\n&Keep", 2) == 1 then rpc_session("deleteAnnotation", { id = a.id }) end end, "delete annotation")
+  map(buf, "n", m.edit, function() with_selected_annotation(compose) end, "edit annotation")
+  map(buf, "n", m.delete, function()
+    with_selected_annotation(function(a)
+      if vim.fn.confirm("Delete annotation?", "&Delete\n&Keep", 2) == 1 then rpc_session("deleteAnnotation", { id = a.id }) end
+    end)
+  end, "delete annotation")
   map(buf, "n", m.inspected, function() local document = state.session.surface.documents[state.document]; if document then rpc_session("setInspected", { documentId = document.id, inspected = not vim.tbl_contains(state.session.progress.inspectedDocumentIds, document.id) }) end end, "toggle inspected")
   map(buf, "n", m.next_annotation, function() jump_annotation(1) end, "next annotation")
   map(buf, "n", m.previous_annotation, function() jump_annotation(-1) end, "previous annotation")
