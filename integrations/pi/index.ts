@@ -4,7 +4,6 @@ import { spawnSync } from "node:child_process";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  formatFeedback,
   lastAssistantText,
   prepareRequest,
   readOutcome,
@@ -105,11 +104,11 @@ export default function schlop(pi: ExtensionAPI) {
           ctx.ui.notify(`Schlop failed: ${outcome.message}`, "error");
         } else if (outcome.kind === "cancelled") {
           ctx.ui.notify("Schlop cancelled; nothing sent.", "info");
-        } else if (!outcome.annotations.length) {
+        } else if (!outcome.annotationCount) {
           ctx.ui.notify("No annotations; nothing sent.", "info");
         } else {
           pi.sendUserMessage(
-            formatFeedback(content, outcome.annotations),
+            outcome.feedback,
             ctx.isIdle() ? undefined : { deliverAs: "followUp" },
           );
         }

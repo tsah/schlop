@@ -5,7 +5,9 @@ import {
   type AnnotationSession,
 } from "@schlop/annotation-core";
 import type {
+  DiffDocument,
   DiffSurface,
+  TextDocument,
   TextSurface,
   MarkdownSurface,
 } from "@schlop/surface-protocol";
@@ -24,9 +26,46 @@ function location(session: AnnotationSession, annotation: Annotation): string {
       return startLine === endLine
         ? `${name}: line ${startLine}, columns ${startColumn}-${endColumn}`
         : `${name}: line ${startLine} column ${startColumn} to line ${endLine} column ${endColumn}`;
-    return `${name}: lines ${startLine}${endLine === startLine ? "" : `-${endLine}`}`;
+    return endLine === startLine
+      ? `${name}: line ${startLine}`
+      : `${name}: lines ${startLine}-${endLine}`;
   }
   return `${name}:${target.startLine}${target.endLine === target.startLine ? "" : `-${target.endLine}`} (${target.side})`;
+}
+// The annotated text itself, so readers who never saw the surface as numbered
+// lines still know exactly what each annotation refers to.
+function excerpt(session: AnnotationSession, annotation: Annotation): string[] {
+  const target = annotation.target;
+  if (target.kind === "surface" || target.kind === "document") return [];
+  const document = session.surface.documents.find(
+    (item) => item.id === target.documentId,
+  );
+  if (!document) return [];
+  if (target.kind === "diff-range")
+    return (document as DiffDocument).hunks
+      .filter((hunk) => hunk.id === target.hunkId)
+      .flatMap((hunk) => hunk.lines)
+      .filter((line) => {
+        const number = target.side === "old" ? line.oldLine : line.newLine;
+        return (
+          number !== undefined &&
+          number >= target.startLine &&
+          number <= target.endLine &&
+          line.kind !== (target.side === "old" ? "addition" : "deletion")
+        );
+      })
+      .map((line) => line.content);
+  const lines = (document as TextDocument).lines
+    .slice(target.startLine - 1, target.endLine)
+    .map((line) => line.content);
+  if (target.startColumn && target.endColumn && lines.length) {
+    lines[lines.length - 1] = lines[lines.length - 1]!.slice(
+      0,
+      target.endColumn,
+    );
+    lines[0] = lines[0]!.slice(target.startColumn - 1);
+  }
+  return lines;
 }
 export function exportMarkdown(session: AnnotationSession): string {
   const output = [
@@ -37,10 +76,13 @@ export function exportMarkdown(session: AnnotationSession): string {
   ];
   session.annotations.forEach((item, index) => {
     output.push(
-      `${index + 1}. \`${location(session, item).replaceAll("`", "\\`")}\``,
-      `   ${item.body.replaceAll("\n", "\n   ")}`,
+      `## ${index + 1}. \`${location(session, item).replaceAll("`", "\\`")}\``,
       "",
     );
+    const quoted = excerpt(session, item);
+    if (quoted.length)
+      output.push(...quoted.map((line) => (line ? `> ${line}` : ">")), "");
+    output.push(item.body.trim(), "");
   });
   if (!session.annotations.length) output.push("No annotations.", "");
   return `${output.join("\n").trimEnd()}\n`;

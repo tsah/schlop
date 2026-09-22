@@ -149,7 +149,7 @@ Troubleshooting starts with `schlop doctor`. Use `--nvim /path/to/nvim` or `SCHL
 
 ## Pi extension
 
-`integrations/pi` is a Pi coding agent package. It adds `/schlop-last`, which opens the last assistant message of the active branch in Schlop's Neovim frontend. Select lines with `V`, or part of a line with `v`, press `c` to annotate, then `s` to submit; the annotations are sent back to Pi as a user message that quotes each annotated passage. Cancelling (`q`) or submitting without annotations sends nothing.
+`integrations/pi` is a Pi coding agent package. It adds `/schlop-last`, which opens the last assistant message of the active branch in Schlop's Neovim frontend. Select lines with `V`, or part of a line with `v`, press `c` to annotate, then `s` to submit; Schlop's Markdown result (`formattedFeedback`, which quotes each annotated passage) is sent back to Pi verbatim as a user message. Cancelling (`q`) or submitting without annotations sends nothing.
 
 Install it from a checkout, then build Schlop so the executable exists:
 

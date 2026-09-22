@@ -98,18 +98,8 @@ export async function prepareRequest(
   };
 }
 
-export type ResultAnnotation = {
-  body: string;
-  target: {
-    kind: string;
-    startLine?: number;
-    endLine?: number;
-    startColumn?: number;
-    endColumn?: number;
-  };
-};
 export type Outcome =
-  | { kind: "submitted"; annotations: ResultAnnotation[] }
+  | { kind: "submitted"; annotationCount: number; feedback: string }
   | { kind: "cancelled" }
   | { kind: "error"; message: string };
 
@@ -135,50 +125,18 @@ export async function readOutcome(
   if (value?.schemaVersion !== 1 || value.requestId !== requestId)
     return { kind: "error", message: "Schlop result does not match request" };
   if (value.outcome === "cancelled") return { kind: "cancelled" };
-  if (value.outcome === "submitted" && Array.isArray(value.annotations))
-    return { kind: "submitted", annotations: value.annotations };
+  if (
+    value.outcome === "submitted" &&
+    Array.isArray(value.annotations) &&
+    typeof value.formattedFeedback === "string"
+  )
+    return {
+      kind: "submitted",
+      annotationCount: value.annotations.length,
+      feedback: value.formattedFeedback,
+    };
   return {
     kind: "error",
     message: String(value.error?.message ?? "Schlop reported an error"),
   };
-}
-
-// Line numbers alone mean little to an agent that never saw its message as
-// numbered lines, so each annotation quotes the exact text it is attached to.
-export function formatFeedback(
-  content: string,
-  annotations: readonly ResultAnnotation[],
-): string {
-  // Same normalization Schlop applies before numbering surface lines.
-  const lines = content
-    .replace(/^\uFEFF/, "")
-    .replace(/\r\n?/g, "\n")
-    .split("\n");
-  const output = [
-    "I reviewed your last message in Schlop and left the annotations below. Address each one.",
-    "",
-  ];
-  annotations.forEach((annotation, index) => {
-    const { startLine, endLine, startColumn, endColumn } = annotation.target;
-    if (startLine === undefined || endLine === undefined) {
-      output.push(`## ${index + 1}. Whole message`, "");
-    } else {
-      const partial = startColumn !== undefined && endColumn !== undefined;
-      const where =
-        startLine === endLine
-          ? `Line ${startLine}${partial ? `, columns ${startColumn}-${endColumn}` : ""}`
-          : `Lines ${startLine}-${endLine}${partial ? ` (partial)` : ""}`;
-      output.push(`## ${index + 1}. ${where}`, "");
-      const quoted = lines.slice(startLine - 1, endLine);
-      if (partial) {
-        const lastIndex = quoted.length - 1;
-        quoted[lastIndex] = quoted[lastIndex]!.slice(0, endColumn);
-        quoted[0] = quoted[0]!.slice(startColumn - 1);
-      }
-      for (const line of quoted) output.push(line ? `> ${line}` : ">");
-      output.push("");
-    }
-    output.push(annotation.body.trim(), "");
-  });
-  return `${output.join("\n").trimEnd()}\n`;
 }

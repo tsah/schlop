@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequestSurface, loadRequest } from "@schlop/annotation-protocol";
 import {
-  formatFeedback,
   lastAssistantText,
   prepareRequest,
   readOutcome,
@@ -73,46 +72,6 @@ test("outcomes map result files and exit statuses", async () => {
   }
 });
 
-test("feedback quotes the annotated lines or the selected part of them", () => {
-  const feedback = formatFeedback("# Plan\r\n\r\nDo the thing.\r\nThen stop.", [
-    {
-      body: "Be specific.\n",
-      target: { kind: "text-range", startLine: 3, endLine: 4 },
-    },
-    { body: "Overall fine.", target: { kind: "surface" } },
-    {
-      body: "Which?",
-      target: {
-        kind: "text-range",
-        startLine: 3,
-        endLine: 3,
-        startColumn: 4,
-        endColumn: 12,
-      },
-    },
-    {
-      body: "Spans lines.",
-      target: {
-        kind: "text-range",
-        startLine: 3,
-        endLine: 4,
-        startColumn: 8,
-        endColumn: 4,
-      },
-    },
-  ]);
-  expect(feedback).toContain(
-    "## 1. Lines 3-4\n\n> Do the thing.\n> Then stop.\n\nBe specific.\n",
-  );
-  expect(feedback).toContain("## 2. Whole message\n\nOverall fine.\n");
-  expect(feedback).toContain(
-    "## 3. Line 3, columns 4-12\n\n> the thing\n\nWhich?\n",
-  );
-  expect(feedback).toContain(
-    "## 4. Lines 3-4 (partial)\n\n> thing.\n> Then\n\nSpans lines.\n",
-  );
-});
-
 test("executable resolution prefers SCHLOP_BIN, then PATH, then the checkout", async () => {
   const directory = await mkdtemp(join(tmpdir(), "schlop-pi-test-"));
   try {
@@ -143,6 +102,7 @@ await Bun.write(request.resultPath, JSON.stringify({
   schemaVersion: 1, requestId: request.requestId, outcome: "submitted",
   annotations: [{ body: "Why?",
     target: { kind: "text-range", startLine: 1, endLine: 1 } }],
+  formattedFeedback: "# Schlop annotations\\n\\n## 1. Line 1\\n\\n> Ship it.\\n\\nWhy?\\n",
 }));
 `,
   );

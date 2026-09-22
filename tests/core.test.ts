@@ -194,6 +194,16 @@ describe("diff surfaces", () => {
       }).valid,
     ).toBe(false);
     expect(parseUnifiedDiff(patch).snapshotId).toBe(surface.snapshotId);
+    const session = addAnnotation(
+      createSession(surface, { id: "d1", now }),
+      annotation({
+        ...target,
+        contextFingerprint: targetContext(surface, target),
+      }),
+    );
+    expect(exportMarkdown(session)).toContain(
+      `(old)\`\n\n> ${deletion.content}\n\nFix this`,
+    );
   });
   test("handles added, deleted and empty files", () => {
     const input = `diff --git a/a b/a\nnew file mode 100644\n--- /dev/null\n+++ b/a\n@@ -0,0 +1 @@\n+x\ndiff --git a/b b/b\ndeleted file mode 100644\n--- a/b\n+++ /dev/null\n@@ -1 +0,0 @@\n-y\ndiff --git a/e b/e\nnew file mode 100644\n--- /dev/null\n+++ b/e\n`;
@@ -217,14 +227,16 @@ describe("exports, storage, overlays, and UI reducers", () => {
       createSession(surface, { id: "s1", now }),
       annotation(target),
     );
-    expect(exportMarkdown(session)).toContain("1. `");
-    expect(exportMarkdown(session)).not.toContain("##");
-    expect(exportMarkdown(session)).toContain("Fix this");
+    expect(exportMarkdown(session)).toContain(
+      "## 1. `README.md: line 1`\n\n> one\n\nFix this",
+    );
     const partial = addAnnotation(
       createSession(surface, { id: "s2", now }),
       annotation({ ...target, startColumn: 2, endColumn: 3 }),
     );
-    expect(exportMarkdown(partial)).toContain("line 1, columns 2-3");
+    expect(exportMarkdown(partial)).toContain(
+      "## 1. `README.md: line 1, columns 2-3`\n\n> ne\n\nFix this",
+    );
     expect(JSON.parse(exportJson(session)).schemaVersion).toBe(1);
   });
   test("atomically saves, resumes, lists and survives corrupt neighbors", async () => {
