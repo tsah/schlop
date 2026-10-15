@@ -1,0 +1,10 @@
+{
+  "name": "schlop",
+  "version": "0.3.0",
+  "description": "Annotate a file or an assistant message in Schlop's Neovim frontend and send the annotations to Claude.",
+  "author": {
+    "name": "Tsah Weiss"
+  },
+  "license": "MIT",
+  "keywords": ["annotation", "review", "neovim"]
+}

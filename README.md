@@ -166,6 +166,32 @@ bun run build
 
 The extension resolves the executable from `SCHLOP_BIN`, then `schlop` on `PATH`, then this checkout's `dist/schlop`. It follows the host TUI lifecycle below: Pi's renderer is suspended while Neovim owns the terminal and redrawn afterwards, so it requires Pi's interactive TUI mode. Try it without installing using `pi -e integrations/pi/index.ts`.
 
+## Claude Code plugin
+
+`integrations/claude-code` is a Claude Code plugin with the same commands: `/schlop-file <path>`, `/schlop-last`, and `/schlop-message [n]`. Annotate and submit exactly as in Pi; the formatted feedback is attached to the command's turn and Claude responds to it. Cancelling, submitting without annotations, or a bad path blocks the prompt, so nothing reaches the model.
+
+Claude Code namespaces plugin commands, so type `/schlop-f`, press Tab to complete `/schlop:schlop-file`, then the path (Claude Code's `@` file completion works for the path). `/schlop:schlop-last` and `/schlop:schlop-message` can be typed in full.
+
+For the same short names as Pi (`/sll`, `/slf`, `/slm`), link the command files as user commands; the plugin's hook recognizes them:
+
+```bash
+for pair in sll:last slf:file slm:message; do
+  ln -s "$PWD/integrations/claude-code/commands/schlop-${pair#*:}.md" ~/.claude/commands/${pair%%:*}.md
+done
+```
+
+`/schlop-message` lists the assistant messages of the active branch, newest at the bottom, in an [fzf](https://github.com/junegunn/fzf) picker with a preview, shown in the same popup or pane as Schlop; Enter opens the message and Esc sends nothing. `/schlop-message 2` skips the picker and opens the second-to-last message (1 is the last), which also works without fzf.
+
+```bash
+claude plugin marketplace add /path/to/schlop
+claude plugin install schlop@schlop
+bun run build   # or put schlop on PATH / set SCHLOP_BIN
+```
+
+Try it without installing using `claude --plugin-dir integrations/claude-code`. The executable resolves as in Pi: `SCHLOP_BIN`, then `PATH`, then this checkout's `dist/schlop` (only under `--plugin-dir`; an installed plugin is copied out of the checkout).
+
+Claude Code cannot hand its terminal to another program, so a `UserPromptSubmit` hook opens Schlop next to it: a full-size tmux popup (tmux 3.2+) when Claude Code runs in tmux, otherwise a zoomed split of Claude Code's pane in herdr, which closes and returns focus when Schlop exits. Outside tmux and herdr the commands report that they cannot open Neovim. The hook runs under Node 22.18+ (TypeScript type stripping), which must be on `PATH`.
+
 ## Architecture
 
 ```text

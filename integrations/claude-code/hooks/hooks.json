@@ -1,0 +1,16 @@
+{
+  "description": "Runs Schlop for /schlop-file and /schlop-last before the prompt is sent.",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/schlop.ts\"",
+            "timeout": 86400
+          }
+        ]
+      }
+    ]
+  }
+}

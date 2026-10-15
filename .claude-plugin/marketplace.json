@@ -1,0 +1,16 @@
+{
+  "name": "schlop",
+  "owner": {
+    "name": "Tsah Weiss"
+  },
+  "metadata": {
+    "description": "Schlop annotation commands for Claude Code."
+  },
+  "plugins": [
+    {
+      "name": "schlop",
+      "source": "./integrations/claude-code",
+      "description": "Annotate a file or an assistant message in Schlop's Neovim frontend and send the annotations to Claude."
+    }
+  ]
+}

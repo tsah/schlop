@@ -1,0 +1,9 @@
+---
+description: Annotate a file in Schlop (Neovim) and send the annotations to Claude
+argument-hint: <path>
+disable-model-invocation: true
+---
+
+The user just annotated `$ARGUMENTS` in Schlop. Their annotations are attached to this message as UserPromptSubmit hook context. Treat that feedback as the user's message and respond to it.
+
+If no Schlop feedback is attached, the Schlop plugin hook did not run: say so and do nothing else.
