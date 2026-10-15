@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Annotate the last Pi assistant message in Schlop's Neovim frontend.",
+  "description": "Annotate the last Pi assistant message, or a file, in Schlop's Neovim frontend.",
   "license": "MIT",
   "keywords": [
     "pi-package",

@@ -151,6 +151,12 @@ Troubleshooting starts with `schlop doctor`. Use `--nvim /path/to/nvim` or `SCHL
 
 `integrations/pi` is a Pi coding agent package. It adds `/schlop-last`, which opens the last assistant message of the active branch in Schlop's Neovim frontend. Select lines with `V`, or part of a line with `v`, press `c` to annotate, then `s` to submit; Schlop's Markdown result (`formattedFeedback`, which quotes each annotated passage) is sent back to Pi verbatim as a user message. Cancelling (`q`) or submitting without annotations sends nothing.
 
+`/schlop-file <path>` does the same for a file, resolved against Pi's working directory (Tab completes paths). Markdown files (`.md`, `.markdown`, `.mdx`) open as Markdown and everything else as text. The file is snapshotted when the command runs, and its cwd-relative path becomes the surface title, so each feedback heading names the file and lines, for example `` `src/auth.ts: lines 10-14` ``. Missing, non-regular, non-UTF-8, and over-10 MiB files are rejected before Pi's TUI is suspended.
+
+Each command also has a short alias: `/sll` (last), `/slf` (file), and `/slm` (message).
+
+`/schlop-message` opens Pi's `/tree` selector (same keys, search, and filters; tool calls hidden) on the last assistant message. Pick any assistant message, including one on another branch, to annotate it; the feedback goes to the current conversation without navigating the tree. Picking anything else warns and reopens the tree there, and Esc sends nothing. The selector is Pi's exported `TreeSelectorComponent`, which is not part of the documented extension API, so a Pi upgrade may require adjusting this command.
+
 Install it from a checkout, then build Schlop so the executable exists:
 
 ```bash
