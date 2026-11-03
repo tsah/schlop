@@ -285,6 +285,26 @@ function herdr(args: string[], env: Record<string, string | undefined>): any {
   return child.stdout.trim() ? JSON.parse(child.stdout).result : null;
 }
 
+function hc(args: string[], env: Record<string, string | undefined>): any {
+  const child = spawnSync("hc", args, { encoding: "utf8", env });
+  if (child.status !== 0)
+    throw new Error(
+      `hc ${args[0]} failed: ${(child.stderr || child.error?.message || "").trim()}`,
+    );
+  return JSON.parse(child.stdout);
+}
+
+// The terminal's record, or null once it is gone.
+function hcGet(address: string, env: Record<string, string | undefined>): any {
+  const child = spawnSync("hc", ["get", "--json", address], {
+    encoding: "utf8",
+    env,
+  });
+  if (child.status !== 0) return null;
+  const record = JSON.parse(child.stdout);
+  return record.terminal ?? record;
+}
+
 // Runs `script` where the user can see it and waits for it to exit. Returns
 // the exit status the script recorded, or null when it never finished (for
 // example, the pane was closed by hand).
@@ -343,9 +363,44 @@ async function runVisible(
       )
         break;
     }
+  } else if (env.HC_TERMINAL_ID) {
+    // herdr-core draws nothing, so a terminal labelled popup=1 asks whatever
+    // app shows this machine to open it over Claude Code. The app labels it
+    // popup_shown=1 when it does; without one, nobody would ever see Neovim.
+    const terminal = hc(
+      [
+        "run",
+        "--bg",
+        "--json",
+        "--no-notify",
+        "--cwd",
+        cwd,
+        "--label",
+        "popup=1",
+        "--",
+        script,
+      ],
+      env,
+    );
+    const address = (terminal.terminal?.address ?? terminal.address) as string;
+    try {
+      for (let tick = 0; !existsSync(statusPath); tick++) {
+        await sleep(200);
+        if (tick % 5 !== 4) continue;
+        const record = hcGet(address, env);
+        if (record?.state !== "live") break;
+        if (tick >= 4 * 5 && !record.labels?.popup_shown)
+          throw new Error(
+            "No app opened Schlop's popup. Under herdr-core, Schlop needs an app that opens terminals labelled popup=1, such as the Herdr app with the Clankerhouse layout.",
+          );
+      }
+    } finally {
+      spawnSync("hc", ["kill", address], { stdio: "ignore", env });
+      spawnSync("hc", ["rm", address], { stdio: "ignore", env });
+    }
   } else {
     throw new Error(
-      "Schlop opens Neovim in a tmux popup or a herdr pane; run Claude Code inside tmux or herdr.",
+      "Schlop opens Neovim in a tmux popup, a herdr pane, or a herdr-core popup; run Claude Code inside tmux, herdr, or herdr-core.",
     );
   }
   try {

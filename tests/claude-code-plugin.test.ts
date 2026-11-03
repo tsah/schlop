@@ -207,13 +207,61 @@ test("/schlop-file attaches submitted feedback and blocks everything else", asyn
     ).toEqual({ decision: "block", reason: "File not found: nope.ts" });
     expect(await handle(input, { PATH: env.PATH }, pluginRoot)).toMatchObject({
       decision: "block",
-      reason: expect.stringContaining("tmux or herdr"),
+      reason: expect.stringContaining("tmux, herdr, or herdr-core"),
     });
     expect(await handle({ prompt: "hello" }, env, pluginRoot)).toBeNull();
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+// A fake hc runs the popup's script inline when an app "shows" it, and plays a
+// core where no app ever does when FAKE_HC_UNSHOWN is set.
+async function withFakeHc(directory: string) {
+  const bin = join(directory, "hc-bin");
+  await mkdir(bin);
+  await writeFile(
+    join(bin, "hc"),
+    `#!/bin/sh
+case "$1" in
+run) echo "$@" >${JSON.stringify(join(directory, "hc-run"))}
+  for last; do :; done
+  [ -n "$FAKE_HC_UNSHOWN" ] || "$last"
+  echo '{"address":"t9"}' ;;
+get) if [ -n "$FAKE_HC_UNSHOWN" ]; then echo '{"state":"live","labels":{"popup":"1"}}'; else echo '{"state":"finished"}'; fi ;;
+esac
+`,
+  );
+  await chmod(join(bin, "hc"), 0o755);
+  return bin;
+}
+
+test("under herdr-core, the hook asks for a popup and fails when no app opens it", async () => {
+  const { directory, env } = await fixture();
+  try {
+    const hcEnv = {
+      PATH: `${await withFakeHc(directory)}:${env.PATH}`,
+      HC_TERMINAL_ID: "t1",
+    };
+    const input = { prompt: "/schlop-file src/a.ts", cwd: directory };
+    expect(await handle(input, hcEnv, pluginRoot)).toMatchObject({
+      hookSpecificOutput: {
+        additionalContext: expect.stringContaining("src/a.ts: line 1"),
+      },
+    });
+    expect(await Bun.file(join(directory, "hc-run")).text()).toContain(
+      "--label popup=1",
+    );
+    expect(
+      await handle(input, { ...hcEnv, FAKE_HC_UNSHOWN: "1" }, pluginRoot),
+    ).toMatchObject({
+      decision: "block",
+      reason: expect.stringContaining("No app opened Schlop's popup"),
+    });
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}, 15_000);
 
 test("the hook runs under plain Node and annotates the last message", async () => {
   const { directory, env } = await fixture();

@@ -190,7 +190,7 @@ bun run build   # or put schlop on PATH / set SCHLOP_BIN
 
 Try it without installing using `claude --plugin-dir integrations/claude-code`. The executable resolves as in Pi: `SCHLOP_BIN`, then `PATH`, then this checkout's `dist/schlop` (only under `--plugin-dir`; an installed plugin is copied out of the checkout).
 
-Claude Code cannot hand its terminal to another program, so a `UserPromptSubmit` hook opens Schlop next to it: a full-size tmux popup (tmux 3.2+) when Claude Code runs in tmux, otherwise a zoomed split of Claude Code's pane in herdr, which closes and returns focus when Schlop exits. Outside tmux and herdr the commands report that they cannot open Neovim. The hook runs under Node 22.18+ (TypeScript type stripping), which must be on `PATH`.
+Claude Code cannot hand its terminal to another program, so a `UserPromptSubmit` hook opens Schlop next to it: a full-size tmux popup (tmux 3.2+) when Claude Code runs in tmux, in herdr, a zoomed split of Claude Code's pane, which closes and returns focus when Schlop exits; under herdr-core (`hc`), which draws nothing itself, a terminal labelled `popup=1` that the app showing the machine opens as a dialog and labels `popup_shown=1` (the Herdr app's Clankerhouse layout does). If no app shows it within five seconds, the command reports so. Outside tmux, herdr and herdr-core the commands report that they cannot open Neovim. The hook runs under Node 22.18+ (TypeScript type stripping), which must be on `PATH`.
 
 ## Architecture
 
