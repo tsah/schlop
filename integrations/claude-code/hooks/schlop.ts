@@ -1,5 +1,6 @@
 // Claude Code UserPromptSubmit hook behind /schlop-file, /schlop-last, and
-// /schlop-message, and their shorthands /slf, /sll, and /slm.
+// /schlop-message, their shorthands /slf, /sll, and /slm, and the user's own
+// sources (see readSources).
 //
 // Claude Code cannot hand its terminal to a child process, and a command's
 // `!` shell step is cut off after two minutes, so the interactive part runs
@@ -39,7 +40,11 @@ type HookInput = {
 export type SchlopCommand =
   | { name: "file"; argument: string }
   | { name: "last" }
-  | { name: "message"; argument: string };
+  | { name: "message"; argument: string }
+  | { name: "source"; source: string; argument: string };
+
+// A user-defined command whose standard output is the document to annotate.
+export type Source = { command: string; title?: string; kind?: SurfaceKind };
 
 // Short names, installed as user commands because Claude Code namespaces
 // every plugin command.
@@ -52,7 +57,13 @@ const shorthands: Record<string, string> = {
 // Claude Code reports plugin commands with their namespace
 // ("/schlop:schlop-file"), whether or not the user typed it; user commands
 // such as the shorthands arrive bare ("/slf").
-export function parseCommand(prompt: string): SchlopCommand | null {
+export function parseCommand(
+  prompt: string,
+  sources: Record<string, Source> = {},
+): SchlopCommand | null {
+  const own = /^\/([a-z][a-z0-9-]*)(?:\s+([\s\S]*))?$/.exec(prompt.trim());
+  if (own && Object.hasOwn(sources, own[1]!))
+    return { name: "source", source: own[1]!, argument: own[2]?.trim() ?? "" };
   const match =
     /^\/(?:schlop:)?(schlop-file|schlop-last|schlop-message|slf|sll|slm)(?:\s+([\s\S]*))?$/.exec(
       prompt.trim(),
@@ -200,6 +211,61 @@ export async function readAnnotatableFile(
     extname(path).toLowerCase(),
   );
   return { kind: markdown ? "markdown" : "text", title, content };
+}
+
+// ~/.config/schlop/sources.json maps a command name to a program whose output
+// Schlop opens: { "slt": { "command": "linear-ticket", "title": "Linear ticket" } }.
+// `/slt TWE-12` runs it in the session's folder with "TWE-12" as $1. Built-in
+// names win, and a missing or malformed file means no sources.
+export async function readSources(
+  env: Record<string, string | undefined>,
+): Promise<Record<string, Source>> {
+  const config = env.XDG_CONFIG_HOME || join(env.HOME || homedir(), ".config");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(
+      await readFile(join(config, "schlop", "sources.json"), "utf8"),
+    );
+  } catch {
+    return {};
+  }
+  if (!parsed || typeof parsed !== "object") return {};
+  return Object.fromEntries(
+    Object.entries(parsed).filter(
+      ([name, source]) =>
+        /^[a-z][a-z0-9-]*$/.test(name) &&
+        !Object.hasOwn(shorthands, name) &&
+        !name.startsWith("schlop-") &&
+        typeof source?.command === "string" &&
+        source.command.trim() !== "",
+    ),
+  ) as Record<string, Source>;
+}
+
+// Runs a source and returns its output as the document, or why it has none.
+export function readSource(
+  name: string,
+  source: Source,
+  argument: string,
+  cwd: string,
+  env: Record<string, string | undefined>,
+): AnnotatableFile {
+  const child = spawnSync(
+    "sh",
+    ["-c", source.command, name, ...(argument ? [argument] : [])],
+    { cwd, env, encoding: "utf8", timeout: 60_000, maxBuffer: maxFileBytes },
+  );
+  if (child.error) return { error: `/${name} failed: ${child.error.message}` };
+  if (child.status !== 0)
+    return {
+      error: `/${name} failed: ${(child.stderr || child.stdout || `exit ${child.status}`).trim()}`,
+    };
+  if (!child.stdout.trim()) return { error: `/${name} printed nothing.` };
+  return {
+    kind: source.kind === "text" ? "text" : "markdown",
+    title: source.title || `/${name}`,
+    content: child.stdout,
+  };
 }
 
 function executable(path: string): boolean {
@@ -511,15 +577,26 @@ export async function handle(
   env: Record<string, string | undefined>,
   pluginRoot: string,
 ): Promise<object | null> {
-  const command =
-    typeof input.prompt === "string" ? parseCommand(input.prompt) : null;
+  if (typeof input.prompt !== "string" || !input.prompt.trim().startsWith("/"))
+    return null;
+  const sources = await readSources(env);
+  const command = parseCommand(input.prompt, sources);
   if (!command) return null;
   const block = (reason: string) => ({ decision: "block", reason });
   const cwd = typeof input.cwd === "string" ? input.cwd : process.cwd();
   let outcome: Outcome;
   try {
-    if (command.name === "file") {
-      const file = await readAnnotatableFile(command.argument, cwd);
+    if (command.name === "file" || command.name === "source") {
+      const file =
+        command.name === "file"
+          ? await readAnnotatableFile(command.argument, cwd)
+          : readSource(
+              command.source,
+              sources[command.source]!,
+              command.argument,
+              cwd,
+              env,
+            );
       if ("error" in file) return block(file.error);
       outcome = await annotate([file], cwd, env, pluginRoot);
     } else {

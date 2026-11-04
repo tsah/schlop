@@ -16,6 +16,7 @@ import {
   lastAssistantText,
   parseCommand,
   readAnnotatableFile,
+  readSources,
 } from "../integrations/claude-code/hooks/schlop";
 
 const pluginRoot = resolve(import.meta.dir, "../integrations/claude-code");
@@ -262,6 +263,78 @@ test("under herdr-core, the hook asks for a popup and fails when no app opens it
     await rm(directory, { recursive: true, force: true });
   }
 }, 15_000);
+
+test("a user source annotates what its command prints", async () => {
+  const { directory, env } = await fixture();
+  try {
+    const config = join(directory, "config");
+    await mkdir(join(config, "schlop"), { recursive: true });
+    await writeFile(
+      join(config, "schlop", "sources.json"),
+      JSON.stringify({
+        slt: {
+          command: 'printf "# Ticket %s\\n\\nin %s\\n" "${1:-none}" "$PWD"',
+          title: "Linear ticket",
+        },
+        broken: { command: "echo nope >&2; exit 3" },
+        empty: { command: "true" },
+        sll: { command: "echo shadowed" },
+      }),
+    );
+    const sourceEnv = { ...env, XDG_CONFIG_HOME: config };
+    expect(parseCommand("/slt TWE-1", await readSources(sourceEnv))).toEqual({
+      name: "source",
+      source: "slt",
+      argument: "TWE-1",
+    });
+    expect(parseCommand("/sll", await readSources(sourceEnv))).toEqual({
+      name: "last",
+    });
+    expect(parseCommand("/slt", {})).toBeNull();
+
+    expect(
+      await handle(
+        { prompt: "/slt TWE-1", cwd: directory },
+        sourceEnv,
+        pluginRoot,
+      ),
+    ).toMatchObject({
+      hookSpecificOutput: {
+        additionalContext: expect.stringContaining("The user added comments"),
+      },
+    });
+    const seen = JSON.parse(
+      await Bun.file(join(directory, "seen.json")).text(),
+    );
+    expect(seen.surface).toMatchObject({
+      kind: "markdown",
+      title: "Linear ticket",
+    });
+    expect(seen.content).toBe(`# Ticket TWE-1\n\nin ${directory}\n`);
+
+    expect(
+      await handle(
+        { prompt: "/broken", cwd: directory },
+        sourceEnv,
+        pluginRoot,
+      ),
+    ).toEqual({
+      decision: "block",
+      reason: "/broken failed: nope",
+    });
+    expect(
+      await handle({ prompt: "/empty", cwd: directory }, sourceEnv, pluginRoot),
+    ).toEqual({
+      decision: "block",
+      reason: "/empty printed nothing.",
+    });
+    expect(
+      await handle({ prompt: "/other", cwd: directory }, sourceEnv, pluginRoot),
+    ).toBeNull();
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 test("the hook runs under plain Node and annotates the last message", async () => {
   const { directory, env } = await fixture();

@@ -192,6 +192,8 @@ Try it without installing using `claude --plugin-dir integrations/claude-code`. 
 
 Claude Code cannot hand its terminal to another program, so a `UserPromptSubmit` hook opens Schlop next to it: a full-size tmux popup (tmux 3.2+) when Claude Code runs in tmux, in herdr, a zoomed split of Claude Code's pane, which closes and returns focus when Schlop exits; under herdr-core (`hc`), which draws nothing itself, a terminal labelled `popup=1` that the app showing the machine opens as a dialog and labels `popup_shown=1` (the Herdr app's Clankerhouse layout does). If no app shows it within five seconds, the command reports so. Outside tmux, herdr and herdr-core the commands report that they cannot open Neovim. The hook runs under Node 22.18+ (TypeScript type stripping), which must be on `PATH`.
 
+Your own sources add commands of the same shape: `~/.config/schlop/sources.json` maps a name to a program whose standard output Schlop opens, as markdown unless `"kind": "text"`. For example `{ "slt": { "command": "linear-ticket \"$@\"", "title": "Linear ticket" } }` makes `/slt TWE-12` run `linear-ticket TWE-12` in the session's folder (the text after the name is `$1`) and attach your annotations of its output, as `/schlop-last` does. Add a matching `~/.claude/commands/slt.md` so Claude Code accepts the command. Built-in names win; a failing or silent command blocks the prompt with its error.
+
 ## Architecture
 
 ```text
