@@ -2,6 +2,9 @@ local rpc = require("schlop.rpc")
 local config = require("schlop.config")
 local M = {}
 local ns = vim.api.nvim_create_namespace("schlop_annotations")
+-- Annotated lines get a gutter bar and a background tint; `default` lets a colorscheme override both.
+vim.api.nvim_set_hl(0, "SchlopAnnotatedLine", { default = true, link = "DiffChange" })
+vim.api.nvim_set_hl(0, "SchlopAnnotationSign", { default = true, link = "DiagnosticInfo" })
 local state = { document = 1, side = "new", standalone = false, closed = false }
 
 local function immutable(buf)
@@ -133,7 +136,7 @@ local function render()
         if target.kind ~= "document" and row_matches(row, target) then
           local first_byte, last_byte = span_bytes(lines[row_number], target, row.line)
           if first_byte then vim.api.nvim_buf_set_extmark(state.content_buf, ns, row_number - 1, first_byte, { end_col = last_byte, hl_group = "Visual", hl_mode = "combine" }) end
-          vim.api.nvim_buf_set_extmark(state.content_buf, ns, row_number - 1, 0, { virt_text = { { " ◆", "DiagnosticInfo" } }, virt_text_pos = "eol", hl_mode = "combine" })
+          vim.api.nvim_buf_set_extmark(state.content_buf, ns, row_number - 1, 0, { sign_text = "▌", sign_hl_group = "SchlopAnnotationSign", line_hl_group = "SchlopAnnotatedLine" })
           break
         end
       end
@@ -365,6 +368,7 @@ function M.open(session, options)
   state = { session = session, document = 1, side = "new", standalone = options and options.standalone or false, original_win = vim.api.nvim_get_current_win(), original_buf = vim.api.nvim_get_current_buf(), closed = false }
   state.content_buf = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_win_set_buf(0, state.content_buf); state.content_win = vim.api.nvim_get_current_win(); immutable(state.content_buf)
+  vim.wo[state.content_win].signcolumn = "yes:1"
   setup_mappings(state.content_buf)
   update_layout()
   state.resize_group = vim.api.nvim_create_augroup("SchlopResize", { clear = true })
