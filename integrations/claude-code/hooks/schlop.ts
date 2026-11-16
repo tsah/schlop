@@ -5,7 +5,7 @@
 // Claude Code cannot hand its terminal to a child process, and a command's
 // `!` shell step is cut off after two minutes, so the interactive part runs
 // here: the hook opens Schlop's Neovim frontend in a tmux popup or a zoomed
-// herdr pane, waits for it, then either blocks the prompt (nothing reaches the
+// Rex or herdr pane, waits for it, then either blocks the prompt (nothing reaches the
 // model) or attaches the formatted feedback as context for the command's turn.
 //
 // Runs under plain Node (type stripping), so it uses only node: modules and is
@@ -360,6 +360,20 @@ function hc(args: string[], env: Record<string, string | undefined>): any {
   return JSON.parse(child.stdout);
 }
 
+// Rex's CLI, from the directory Rex records for the session's own binary.
+function rexBin(env: Record<string, string | undefined>): string {
+  return env.REX_BIN_DIR ? join(env.REX_BIN_DIR, "rex") : "rex";
+}
+
+function rex(args: string[], env: Record<string, string | undefined>): any {
+  const child = spawnSync(rexBin(env), args, { encoding: "utf8", env });
+  if (child.status !== 0)
+    throw new Error(
+      `rex ${args[0]} failed: ${(child.stderr || child.error?.message || "").trim()}`,
+    );
+  return child.stdout.trim() ? JSON.parse(child.stdout) : null;
+}
+
 // The terminal's record, or null once it is gone.
 function hcGet(address: string, env: Record<string, string | undefined>): any {
   const child = spawnSync("hc", ["get", "--json", address], {
@@ -402,6 +416,51 @@ async function runVisible(
       throw new Error(
         `tmux display-popup failed: ${(child.stderr || child.error?.message || `status ${child.status}`).trim()}`,
       );
+  } else if (env.REX_BLOCK) {
+    // Rex has no popups, so, as in herdr, a zoomed split of Claude Code's
+    // block. The block closes itself when the script exits.
+    const scope = env.REX_SESSION ? ["-s", env.REX_SESSION] : [];
+    const created = rex(
+      [
+        "split",
+        ...scope,
+        "-b",
+        env.REX_BLOCK,
+        "--split=right",
+        "-c",
+        cwd,
+        "--label",
+        "Schlop",
+        "--json",
+        "--",
+        script,
+      ],
+      env,
+    );
+    const block = created.block_ids[0] as string;
+    try {
+      rex(["zoom", ...scope, block, "--on"], env);
+      for (let tick = 0; !existsSync(statusPath); tick++) {
+        await sleep(200);
+        if (
+          tick % 5 === 4 &&
+          spawnSync(rexBin(env), ["block", "inspect", ...scope, block], {
+            stdio: "ignore",
+            env,
+          }).status !== 0
+        )
+          break;
+      }
+    } finally {
+      spawnSync(rexBin(env), ["block", "close", ...scope, block], {
+        stdio: "ignore",
+        env,
+      });
+      spawnSync(rexBin(env), ["focus", ...scope, env.REX_BLOCK], {
+        stdio: "ignore",
+        env,
+      });
+    }
   } else if (env.HERDR_PANE_ID) {
     // A zoomed split of Claude Code's pane. It closes itself when the script
     // exits, and herdr returns focus to Claude Code.
@@ -466,7 +525,7 @@ async function runVisible(
     }
   } else {
     throw new Error(
-      "Schlop opens Neovim in a tmux popup, a herdr pane, or a herdr-core popup; run Claude Code inside tmux, herdr, or herdr-core.",
+      "Schlop opens Neovim in a tmux popup, a Rex or herdr pane, or a herdr-core popup; run Claude Code inside tmux, Rex, herdr, or herdr-core.",
     );
   }
   try {

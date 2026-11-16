@@ -208,9 +208,61 @@ test("/schlop-file attaches submitted feedback and blocks everything else", asyn
     ).toEqual({ decision: "block", reason: "File not found: nope.ts" });
     expect(await handle(input, { PATH: env.PATH }, pluginRoot)).toMatchObject({
       decision: "block",
-      reason: expect.stringContaining("tmux, herdr, or herdr-core"),
+      reason: expect.stringContaining("tmux, Rex, herdr, or herdr-core"),
     });
     expect(await handle({ prompt: "hello" }, env, pluginRoot)).toBeNull();
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+// A fake rex runs the split's script inline and logs every call.
+async function withFakeRex(directory: string) {
+  const bin = join(directory, "rex-bin");
+  await mkdir(bin);
+  await writeFile(
+    join(bin, "rex"),
+    `#!/bin/sh
+echo "$@" >>${JSON.stringify(join(directory, "rex-calls"))}
+case "$1" in
+split) for last; do :; done
+  "$last"
+  echo '{"block_ids":["block:9"]}' ;;
+block) [ "$2" = inspect ] && exit 3 ;;
+esac
+exit 0
+`,
+  );
+  await chmod(join(bin, "rex"), 0o755);
+  return bin;
+}
+
+test("under Rex, the hook opens Schlop in a zoomed split and returns focus", async () => {
+  const { directory, env } = await fixture();
+  try {
+    const rexEnv = {
+      PATH: env.PATH,
+      REX_BIN_DIR: await withFakeRex(directory),
+      REX_SESSION: "session:1",
+      REX_BLOCK: "block:1",
+    };
+    const input = { prompt: "/schlop-file src/a.ts", cwd: directory };
+    expect(await handle(input, rexEnv, pluginRoot)).toMatchObject({
+      hookSpecificOutput: {
+        additionalContext: expect.stringContaining("src/a.ts: line 1"),
+      },
+    });
+    const calls = (await Bun.file(join(directory, "rex-calls")).text())
+      .trim()
+      .split("\n");
+    expect(calls[0]).toStartWith(
+      `split -s session:1 -b block:1 --split=right -c ${directory} --label Schlop --json -- `,
+    );
+    expect(calls.slice(1)).toEqual([
+      "zoom -s session:1 block:9 --on",
+      "block close -s session:1 block:9",
+      "focus -s session:1 block:1",
+    ]);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
