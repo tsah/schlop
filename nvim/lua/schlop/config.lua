@@ -1,6 +1,8 @@
 local M = {}
 M.values = {
   executable = "schlop",
+  -- Draw Markdown surfaces rendered in place; `R` shows the raw source.
+  render_markdown = true,
   mappings = {
     annotate = "c",
     edit = "e",
@@ -14,6 +16,7 @@ M.values = {
     cancel = "q",
     interrupt = "<C-c>",
     help = "?",
+    toggle_rendered = "R",
   },
 }
 function M.setup(options)
