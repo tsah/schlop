@@ -1,5 +1,6 @@
 local rpc = require("schlop.rpc")
 local config = require("schlop.config")
+local markdown = require("schlop.markdown")
 local M = {}
 local ns = vim.api.nvim_create_namespace("schlop_annotations")
 -- Annotated lines get a gutter bar and a background tint; `default` lets a colorscheme override both.
@@ -143,11 +144,17 @@ local function render()
     end
   end
   local kind = state.session.surface.kind
-  vim.bo[state.content_buf].syntax = kind == "markdown" and "markdown" or (kind == "diff" and "diff" or "")
+  if kind == "markdown" then
+    state.rendered = markdown.apply(state.content_buf, state.content_win, config.values.render_markdown and not state.raw)
+  else
+    markdown.clear(state.content_buf, state.content_win)
+    state.rendered = false
+    vim.bo[state.content_buf].syntax = kind == "diff" and "diff" or ""
+  end
   local document = state.session.surface.documents[state.document]
   vim.api.nvim_buf_set_name(state.content_buf, "schlop://" .. state.session.id .. "/" .. (document and document.id or "empty"))
   local document_title = (document and document.title or "no changed files"):gsub("%%", "%%%%")
-  vim.wo[state.content_win].winbar = string.format(" Schlop · %s · file %d/%d%s ", document_title, math.min(state.document, #state.session.surface.documents), #state.session.surface.documents, kind == "diff" and (" · context " .. state.side) or "")
+  vim.wo[state.content_win].winbar = string.format(" Schlop · %s · file %d/%d%s ", document_title, math.min(state.document, #state.session.surface.documents), #state.session.surface.documents, kind == "diff" and (" · context " .. state.side) or (kind == "markdown" and (state.rendered and " · rendered" or " · raw") or ""))
   local content_width = vim.api.nvim_win_get_width(state.content_win)
   if content_width >= 76 then
     vim.wo[state.content_win].statusline = " [f/]f files · c annotate · e edit · d delete · s submit · ? help "
@@ -253,7 +260,7 @@ local function interrupt()
 end
 M.interrupt = interrupt
 local function help()
-  local lines = { "Schlop", "", "j/k move · v/V select · c annotate selection · C document · A surface", "e edit · d delete · m inspected · ]a/[a annotations", "]f/[f documents · ]h/[h headings or hunks · h/l diff context side", "s submit · q cancel · Ctrl-c interrupt", "", "Persisted targets use snapshot, document, hunk, side and semantic line coordinates." }
+  local lines = { "Schlop", "", "j/k move · v/V select · c annotate selection · C document · A surface", "e edit · d delete · m inspected · ]a/[a annotations", "]f/[f documents · ]h/[h headings or hunks · h/l diff context side", "R rendered or raw Markdown", "s submit · q cancel · Ctrl-c interrupt", "", "Persisted targets use snapshot, document, hunk, side and semantic line coordinates." }
   local buf = vim.api.nvim_create_buf(false, true); vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines); immutable(buf)
   local height = math.min(#lines + 4, vim.o.lines - 4)
   local win = vim.api.nvim_open_win(buf, true, { relative = "editor", row = math.max(1, math.floor((vim.o.lines - height) / 2)), col = math.max(1, math.floor((vim.o.columns - 78) / 2)), width = math.min(78, vim.o.columns - 4), height = height, border = "rounded", style = "minimal", title = " Help " })
@@ -332,6 +339,7 @@ local function setup_mappings(buf)
   map(buf, "n", "l", function() if state.session.surface.kind == "diff" then state.side = "new"; render() else vim.cmd("normal! l") end end, "new side")
   map(buf, "n", m.submit, function() finish("submit") end, "submit")
   map(buf, "n", m.cancel, function() finish("cancel") end, "cancel")
+  map(buf, "n", m.toggle_rendered, function() if state.session.surface.kind == "markdown" then state.raw = not state.raw; render() end end, "rendered or raw Markdown")
   map(buf, "n", m.help, help, "help")
   map(buf, "n", m.interrupt, interrupt, "interrupt Schlop")
   map(buf, "n", "<Tab>", "<C-w>w", "next pane")

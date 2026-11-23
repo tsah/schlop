@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createSession } from "@schlop/annotation-core";
 import { createTextSurface } from "@schlop/surface-text";
+import { createMarkdownSurface } from "@schlop/surface-markdown";
 import { parseUnifiedDiff } from "@schlop/surface-diff";
 import { fingerprint } from "@schlop/surface-protocol";
 import { loadRequest, validateResult } from "@schlop/annotation-protocol";
@@ -378,6 +379,44 @@ vim.opt.runtimepath:prepend(${JSON.stringify(join(import.meta.dir, "../nvim"))})
 require("schlop.ui").open(vim.json.decode(${JSON.stringify(JSON.stringify(session))}), { standalone = false })
 assert(vim.api.nvim_buf_get_lines(0, 0, 1, false)[1] == "(no changed documents)")
 vim.api.nvim_feedkeys(vim.keycode("]f"), "x", false)
+vim.cmd("qa!")
+`,
+  );
+  const child = Bun.spawn(
+    [Bun.which("nvim")!, "--headless", "-u", "NONE", "-l", script],
+    { stdout: "pipe", stderr: "pipe" },
+  );
+  const stderr = await new Response(child.stderr).text();
+  expect(await child.exited, stderr).toBe(0);
+});
+
+test("headless Neovim renders Markdown in place over unchanged source lines", async () => {
+  if (!Bun.which("nvim")) return;
+  const directory = await root();
+  const content =
+    "# Title\n\n- item\n- [ ] task\n\n| a | bb |\n| --- | --- |\n| ccc | d |\n";
+  const session = createSession(
+    createMarkdownSurface({ content, title: "plan.md" }),
+    { id: "rendered-md" },
+  );
+  const script = join(directory, "markdown.lua");
+  await writeFile(
+    script,
+    `
+vim.opt.runtimepath:prepend(${JSON.stringify(join(import.meta.dir, "../nvim"))})
+require("schlop.ui").open(vim.json.decode(${JSON.stringify(JSON.stringify(session))}), { standalone = false })
+local source = vim.split(${JSON.stringify(content)}, "\\n")
+local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+assert(vim.deep_equal(lines, source), "buffer must hold the source lines that anchors refer to")
+local ns = vim.api.nvim_get_namespaces().schlop_markdown
+local function marks() return #vim.api.nvim_buf_get_extmarks(0, ns, 0, -1, {}) end
+assert(vim.wo.conceallevel == 2 and marks() > 0, "Markdown should render")
+assert(vim.wo.winbar:find("rendered", 1, true))
+vim.api.nvim_feedkeys("R", "x", false)
+assert(vim.wo.conceallevel == 0 and marks() == 0, "R should show the raw source")
+assert(vim.wo.winbar:find("raw", 1, true))
+vim.api.nvim_feedkeys("R", "x", false)
+assert(marks() > 0)
 vim.cmd("qa!")
 `,
   );
