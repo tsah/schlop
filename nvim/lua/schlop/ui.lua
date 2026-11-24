@@ -7,6 +7,9 @@ local ns = vim.api.nvim_create_namespace("schlop_annotations")
 vim.api.nvim_set_hl(0, "SchlopAnnotatedLine", { default = true, link = "DiffChange" })
 vim.api.nvim_set_hl(0, "SchlopAnnotationSign", { default = true, link = "DiagnosticInfo" })
 local state = { document = 1, side = "new", standalone = false, closed = false }
+-- The sidebar keeps this width at every size. Under Rex, Schlop starts in a half-width split
+-- that is zoomed afterwards, and Neovim's resize would otherwise share the new width equally.
+local SIDEBAR_WIDTH = 30
 
 local function immutable(buf)
   vim.bo[buf].buftype = "nofile"
@@ -144,6 +147,12 @@ local function render()
     end
   end
   local kind = state.session.surface.kind
+  -- Prose wraps so long paragraphs stay readable; diffs keep one row per line.
+  if kind == "text" or kind == "markdown" then
+    vim.wo[state.content_win].wrap = true
+    vim.wo[state.content_win].linebreak = true
+    vim.wo[state.content_win].breakindent = true
+  end
   if kind == "markdown" then
     state.rendered = markdown.apply(state.content_buf, state.content_win, config.values.render_markdown and not state.raw)
   else
@@ -358,7 +367,7 @@ local function update_layout()
   if vim.o.columns >= 70 and not sidebar_valid then
     local previous = vim.api.nvim_get_current_win()
     vim.api.nvim_set_current_win(state.content_win)
-    vim.cmd("botright 30vnew")
+    vim.cmd("botright " .. SIDEBAR_WIDTH .. "vnew")
     state.sidebar_win = vim.api.nvim_get_current_win()
     state.sidebar_buf = vim.api.nvim_get_current_buf()
     immutable(state.sidebar_buf)
@@ -367,9 +376,11 @@ local function update_layout()
     vim.wo[state.sidebar_win].signcolumn = "no"
     vim.wo[state.sidebar_win].foldcolumn = "0"
     vim.wo[state.sidebar_win].wrap = true
+    vim.wo[state.sidebar_win].winfixwidth = true
     setup_mappings(state.sidebar_buf)
     if vim.api.nvim_win_is_valid(previous) then vim.api.nvim_set_current_win(previous) end
   end
+  if state.sidebar_win and vim.api.nvim_win_is_valid(state.sidebar_win) then vim.api.nvim_win_set_width(state.sidebar_win, SIDEBAR_WIDTH) end
 end
 M.finish = finish
 function M.open(session, options)

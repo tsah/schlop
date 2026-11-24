@@ -454,6 +454,21 @@ vim.api.nvim_feedkeys("?", "x", false)
 vim.o.columns = 100
 vim.api.nvim_exec_autocmds("VimResized", {})
 assert(vim.wait(1000, function() return #vim.api.nvim_tabpage_list_wins(0) == 2 end, 20))
+-- Growing the editor (Rex zooms Schlop's split after it starts) widens the content, not the sidebar.
+local function sidebar_width()
+  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    if not vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(win)):match("^schlop://") then return vim.api.nvim_win_get_width(win) end
+  end
+end
+vim.o.columns = 240
+vim.cmd("wincmd =")
+vim.api.nvim_exec_autocmds("VimResized", {})
+assert(sidebar_width() == 30, "sidebar width " .. tostring(sidebar_width()))
+for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+  if vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(win)):match("^schlop://") then
+    assert(vim.wo[win].wrap and vim.wo[win].linebreak, "text content must wrap")
+  end
+end
 vim.cmd("qa!")
 `,
   );
